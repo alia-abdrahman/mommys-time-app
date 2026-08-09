@@ -9,6 +9,7 @@ struct FindTimeSheet: View {
     @AppStorage(SettingsKeys.dayEndHour) private var dayEndHour = 23
     @AppStorage(SettingsKeys.bedtimeHour) private var bedtimeHour = 21
     @AppStorage(SettingsKeys.minGapMinutes) private var minGapMinutes = 30
+    @AppStorage(SettingsKeys.maxSlotMinutes) private var maxSlotMinutes = 120
 
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \Goal.createdAt, ascending: true)],
@@ -23,7 +24,8 @@ struct FindTimeSheet: View {
             dayStartHour: dayStartHour,
             dayEndHour: dayEndHour,
             bedtimeHour: bedtimeHour,
-            minGapMinutes: minGapMinutes
+            minGapMinutes: minGapMinutes,
+            maxSlotMinutes: maxSlotMinutes
         )
         .findSlots(in: intervals, on: Date())
     }

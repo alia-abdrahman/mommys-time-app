@@ -5,9 +5,15 @@ enum SettingsKeys {
     static let dayEndHour = "dayEndHour"
     static let bedtimeHour = "bedtimeHour"
     static let minGapMinutes = "minGapMinutes"
+    static let maxSlotMinutes = "maxSlotMinutes"
+    static let hasCompletedOnboarding = "hasCompletedOnboarding"
+    static let alwaysShowGuide = "alwaysShowGuide"
+    static let hasSeenTodayGuide = "hasSeenTodayGuide"
 }
 
 struct ContentView: View {
+    @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
+
     var body: some View {
         TabView {
             TodayView()
@@ -18,6 +24,9 @@ struct ContentView: View {
                 .tabItem { Label("Progress", systemImage: "chart.bar.fill") }
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+        }
+        .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
+            OnboardingView()
         }
     }
 }

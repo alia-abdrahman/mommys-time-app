@@ -13,6 +13,23 @@ struct TodayView: View {
     @State private var showingFindTime = false
     @State private var editingBlock: ScheduleBlock?
 
+    @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
+    @AppStorage(SettingsKeys.alwaysShowGuide) private var alwaysShowGuide = false
+    @AppStorage(SettingsKeys.hasSeenTodayGuide) private var hasSeenTodayGuide = false
+
+    @StateObject private var guide = GuideController(steps: [
+        GuideStep(
+            id: .addBlock,
+            title: "Map out your day",
+            message: "Add your kids' routines, chores and quiet times here. The more the app knows, the better it can find your me-time. 🌸"
+        ),
+        GuideStep(
+            id: .findTime,
+            title: "Find your time",
+            message: "Once your day is mapped out, tap Find my time and the app spots the pockets of time that are just for you. ✨"
+        ),
+    ])
+
     private var todaysBlocks: [(block: ScheduleBlock, start: Date, end: Date)] {
         let today = Date()
         return allBlocks
@@ -64,6 +81,7 @@ struct TodayView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .padding()
+                .guideAnchor(.findTime)
             }
             .sheet(isPresented: $showingAddBlock) {
                 AddBlockSheet()
@@ -74,6 +92,22 @@ struct TodayView: View {
             .sheet(item: $editingBlock) { block in
                 EditBlockSheet(block: block)
             }
+        }
+        .guideOverlay(guide)
+        .onAppear { maybeStartGuide() }
+        .onChange(of: hasCompletedOnboarding) { _, done in
+            if done { maybeStartGuide() }
+        }
+        .onChange(of: guide.isActive) { _, active in
+            if !active { hasSeenTodayGuide = true }
+        }
+    }
+
+    private func maybeStartGuide() {
+        guard hasCompletedOnboarding, !guide.isActive else { return }
+        guard !showingAddBlock, !showingFindTime, editingBlock == nil else { return }
+        if alwaysShowGuide || !hasSeenTodayGuide {
+            guide.start()
         }
     }
 
@@ -91,6 +125,7 @@ struct TodayView: View {
                 showingAddBlock = true
             }
             .buttonStyle(.bordered)
+            .guideAnchor(.addBlock)
         }
         .padding(32)
     }
