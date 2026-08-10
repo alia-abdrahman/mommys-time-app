@@ -6,9 +6,23 @@ struct AddBlockSheet: View {
 
     @State private var title = ""
     @State private var category: BlockCategory = .kids
-    @State private var start = Date()
-    @State private var end = Date().addingTimeInterval(60 * 60)
+    @State private var start: Date
+    @State private var end: Date
     @State private var repeatsDaily = false
+
+    private let day: Date
+
+    init(day: Date = Date()) {
+        self.day = day
+        let calendar = Calendar.current
+        let now = Date()
+        let time = calendar.dateComponents([.hour, .minute], from: now)
+        let base = calendar.date(
+            bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day
+        ) ?? day
+        _start = State(initialValue: base)
+        _end = State(initialValue: base.addingTimeInterval(60 * 60))
+    }
 
     var body: some View {
         NavigationStack {
@@ -72,7 +86,7 @@ struct AddBlockSheet: View {
         title = template.title
         category = template.category
         let calendar = Calendar.current
-        if let s = calendar.date(bySettingHour: template.startHour, minute: template.startMinute, second: 0, of: Date()) {
+        if let s = calendar.date(bySettingHour: template.startHour, minute: template.startMinute, second: 0, of: day) {
             start = s
             end = s.addingTimeInterval(Double(template.durationMinutes) * 60)
         }

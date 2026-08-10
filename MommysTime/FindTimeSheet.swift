@@ -18,6 +18,7 @@ struct FindTimeSheet: View {
     private var goals: FetchedResults<Goal>
 
     let intervals: [BlockInterval]
+    var date: Date = Date()
 
     private var slots: [FreeSlot] {
         TimeFinder(
@@ -27,7 +28,7 @@ struct FindTimeSheet: View {
             minGapMinutes: minGapMinutes,
             maxSlotMinutes: maxSlotMinutes
         )
-        .findSlots(in: intervals, on: Date())
+        .findSlots(in: intervals, on: date)
     }
 
     var body: some View {
