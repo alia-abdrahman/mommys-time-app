@@ -27,6 +27,14 @@ struct HomeView: View {
     )
     private var appointments: FetchedResults<Appointment>
 
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \PumpSession.date, ascending: false)],
+        animation: .default
+    )
+    private var pumpSessions: FetchedResults<PumpSession>
+
+    @AppStorage(SettingsKeys.pumpIntervalHours) private var pumpIntervalHours = 3
+
     @State private var showingNotifications = false
 
     var body: some View {
@@ -169,19 +177,13 @@ struct HomeView: View {
                 }
 
                 NavigationLink {
-                    FeaturePlaceholderView(
-                        title: "Inventory", systemImage: "archivebox.fill",
-                        message: "Track diapers, wipes, formula and supplies so you never run out."
-                    )
+                    InventoryView()
                 } label: {
                     TileLabel(title: "Inventory", systemImage: "archivebox.fill", color: .teal)
                 }
 
                 NavigationLink {
-                    FeaturePlaceholderView(
-                        title: "Pump Tracker", systemImage: "drop.fill",
-                        message: "Log pumping sessions and get gentle reminders for the next one."
-                    )
+                    PumpTrackerView()
                 } label: {
                     TileLabel(title: "Pump Tracker", systemImage: "drop.fill", color: .cyan)
                 }
@@ -197,19 +199,13 @@ struct HomeView: View {
                 .font(.headline)
             LazyVGrid(columns: columns, spacing: 16) {
                 NavigationLink {
-                    FeaturePlaceholderView(
-                        title: "Recipes", systemImage: "fork.knife",
-                        message: "Quick, nourishing recipes for busy mamas.", isPremium: true
-                    )
+                    RecipesView()
                 } label: {
                     TileLabel(title: "Recipes", systemImage: "fork.knife", color: .pink, isPremium: true)
                 }
 
                 NavigationLink {
-                    FeaturePlaceholderView(
-                        title: "Finance — My Spending", systemImage: "dollarsign.circle.fill",
-                        message: "See where the family budget goes and plan ahead.", isPremium: true
-                    )
+                    MySpendingView()
                 } label: {
                     TileLabel(title: "My Spending", systemImage: "dollarsign.circle.fill", color: .pink, isPremium: true)
                 }
@@ -239,6 +235,13 @@ struct HomeView: View {
         if let appt = appointments.first(where: { ($0.date ?? .distantPast) > now }),
            let date = appt.date {
             candidates.append((appt.title ?? "appointment", date))
+        }
+
+        if let lastPump = pumpSessions.first?.date {
+            let nextPump = lastPump.addingTimeInterval(Double(pumpIntervalHours) * 3600)
+            if nextPump > now {
+                candidates.append(("Pump session", nextPump))
+            }
         }
 
         return candidates.min(by: { $0.date < $1.date })
