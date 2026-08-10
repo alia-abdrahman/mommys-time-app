@@ -24,6 +24,25 @@
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="title" attributeType="String"/>
     </entity>
+    <entity name="FeedSession" representedClassName="FeedSession" syncable="YES" codeGenerationType="class">
+        <attribute name="amountML" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="date" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="durationMinutes" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="side" optional="YES" attributeType="String"/>
+        <attribute name="type" attributeType="String" defaultValueString="Breast"/>
+    </entity>
+    <entity name="GrowthEntry" representedClassName="GrowthEntry" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="date" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="headCm" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="heightCm" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="weightKg" attributeType="Double" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
     <entity name="Goal" representedClassName="Goal" syncable="YES" codeGenerationType="class">
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="icon" attributeType="String" defaultValueString="🌸"/>
