@@ -12,14 +12,12 @@ struct AppointmentsView: View {
     @State private var showingAdd = false
     @State private var editing: Appointment?
 
-    private var upcoming: [Appointment] {
+    /// Upcoming first (soonest first), then past (most recent first).
+    private var orderedAppointments: [Appointment] {
         let now = Date()
-        return appointments.filter { ($0.date ?? .distantPast) >= now }
-    }
-
-    private var past: [Appointment] {
-        let now = Date()
-        return appointments.filter { ($0.date ?? .distantPast) < now }.reversed()
+        let upcoming = appointments.filter { ($0.date ?? .distantPast) >= now }
+        let past = appointments.filter { ($0.date ?? .distantPast) < now }.reversed()
+        return upcoming + Array(past)
     }
 
     var body: some View {
@@ -27,32 +25,23 @@ struct AppointmentsView: View {
             if appointments.isEmpty {
                 emptyState
             } else {
-                List {
-                    if !upcoming.isEmpty {
-                        Section("Upcoming") {
-                            ForEach(upcoming, id: \.objectID) { appt in
-                                AppointmentRow(appointment: appt)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { editing = appt }
-                            }
-                            .onDelete { delete(upcoming, at: $0) }
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ForEach(orderedAppointments, id: \.objectID) { appt in
+                            AppointmentCard(appointment: appt)
+                                .contentShape(Rectangle())
+                                .onTapGesture { editing = appt }
+                                .contextMenu {
+                                    Button("Edit") { editing = appt }
+                                    Button("Delete", role: .destructive) { delete(appt) }
+                                }
                         }
                     }
-                    if !past.isEmpty {
-                        Section("Past") {
-                            ForEach(past, id: \.objectID) { appt in
-                                AppointmentRow(appointment: appt)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { editing = appt }
-                            }
-                            .onDelete { delete(past, at: $0) }
-                        }
-                    }
+                    .padding()
                 }
-                .listStyle(.insetGrouped)
             }
         }
-        .navigationTitle("Appointments")
+        .navigationTitle("Appointment")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -83,44 +72,42 @@ struct AppointmentsView: View {
         .padding(32)
     }
 
-    private func delete(_ list: [Appointment], at offsets: IndexSet) {
-        for index in offsets {
-            context.delete(list[index])
-        }
+    private func delete(_ appointment: Appointment) {
+        context.delete(appointment)
         try? context.save()
     }
 }
 
-private struct AppointmentRow: View {
+private struct AppointmentCard: View {
     @ObservedObject var appointment: Appointment
 
     private var isPast: Bool { (appointment.date ?? .distantPast) < Date() }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "calendar.badge.clock")
-                .font(.title2)
-                .foregroundStyle(isPast ? Color.secondary : Color.purple)
-                .frame(width: 32)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(appointment.title ?? "")
-                    .font(.body)
-                if let date = appointment.date {
-                    Text(date.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let location = appointment.location, !location.isEmpty {
-                    Label(location, systemImage: "mappin.and.ellipse")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+        VStack(spacing: 6) {
+            Text(appointment.title ?? "")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            if let date = appointment.date {
+                Text(date.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute()))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
+            if let location = appointment.location, !location.isEmpty {
+                Label(location, systemImage: "mappin.and.ellipse")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(.vertical, 4)
-        .opacity(isPast ? 0.6 : 1)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 16)
+        .background(Color.purple.opacity(isPast ? 0.06 : 0.12), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.purple.opacity(isPast ? 0.15 : 0.3), lineWidth: 1)
+        )
+        .opacity(isPast ? 0.65 : 1)
     }
 }
 
@@ -150,7 +137,7 @@ struct AppointmentSheet: View {
         NavigationStack {
             Form {
                 Section("Appointment") {
-                    TextField("Title (e.g. Pediatrician checkup)", text: $title)
+                    TextField("Title (e.g. Baby checkup)", text: $title)
                     DatePicker("Date & time", selection: $date)
                     TextField("Location (optional)", text: $location)
                 }
