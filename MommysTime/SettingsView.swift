@@ -6,10 +6,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.bedtimeHour) private var bedtimeHour = 21
     @AppStorage(SettingsKeys.minGapMinutes) private var minGapMinutes = 30
     @AppStorage(SettingsKeys.maxSlotMinutes) private var maxSlotMinutes = 120
-    @AppStorage(SettingsKeys.alwaysShowGuide) private var alwaysShowGuide = false
-    @AppStorage(SettingsKeys.hasSeenTodayGuide) private var hasSeenTodayGuide = false
-
-    @State private var showReplayConfirmation = false
+    @AppStorage(SettingsKeys.showGuide) private var showGuide = true
 
     var body: some View {
         NavigationStack {
@@ -62,16 +59,11 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("Always show the guide", isOn: $alwaysShowGuide)
-                    Button("Show the guide again") {
-                        hasSeenTodayGuide = false
-                        showReplayConfirmation = true
-                    }
-                    .disabled(alwaysShowGuide)
+                    Toggle("Show getting-started guide", isOn: $showGuide)
                 } header: {
                     Text("Getting started")
                 } footer: {
-                    Text("Little tips that point out where to tap. Turn this on to see them every time, or replay them once.")
+                    Text("Little tips that point out where to tap. They show once on the blank starting screen for a new day with nothing scheduled, then this turns off. Switch it back on to see them again.")
                 }
 
                 Section {
@@ -81,11 +73,6 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .alert("Guide ready", isPresented: $showReplayConfirmation) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Head to the Today tab and the guide will walk you through it again.")
-            }
         }
     }
 

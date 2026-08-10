@@ -12,10 +12,10 @@ struct TodayView: View {
     @State private var showingAddBlock = false
     @State private var showingFindTime = false
     @State private var editingBlock: ScheduleBlock?
+    @State private var selectedDate = Date()
 
     @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
-    @AppStorage(SettingsKeys.alwaysShowGuide) private var alwaysShowGuide = false
-    @AppStorage(SettingsKeys.hasSeenTodayGuide) private var hasSeenTodayGuide = false
+    @AppStorage(SettingsKeys.showGuide) private var showGuide = true
 
     @StateObject private var guide = GuideController(steps: [
         GuideStep(
@@ -30,64 +30,87 @@ struct TodayView: View {
         ),
     ])
 
-    private var todaysBlocks: [(block: ScheduleBlock, start: Date, end: Date)] {
-        let today = Date()
-        return allBlocks
+    private var dayBlocks: [(block: ScheduleBlock, start: Date, end: Date)] {
+        allBlocks
             .compactMap { block in
-                block.resolvedTimes(on: today).map { (block, $0.start, $0.end) }
+                block.resolvedTimes(on: selectedDate).map { (block, $0.start, $0.end) }
             }
             .sorted { $0.1 < $1.1 }
     }
 
     private var intervals: [BlockInterval] {
-        todaysBlocks.map { BlockInterval(start: $0.start, end: $0.end, category: $0.block.blockCategory) }
+        dayBlocks.map { BlockInterval(start: $0.start, end: $0.end, category: $0.block.blockCategory) }
     }
+
+    private var isToday: Bool { Calendar.current.isDateInToday(selectedDate) }
+
+    private var isPast: Bool {
+        Calendar.current.startOfDay(for: selectedDate) < Calendar.current.startOfDay(for: Date())
+    }
+
+    /// Past days are read-only for the schedule itself; today and future days
+    /// can be added to, edited and searched for me-time.
+    private var isEditable: Bool { !isPast }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if todaysBlocks.isEmpty {
-                    emptyState
-                } else {
-                    List {
-                        ForEach(todaysBlocks, id: \.block.objectID) { item in
-                            BlockRow(block: item.block, start: item.start, end: item.end) {
-                                editingBlock = item.block
+            VStack(spacing: 0) {
+                WeekStrip(date: $selectedDate)
+                Group {
+                    if dayBlocks.isEmpty {
+                        emptyState
+                    } else {
+                        List {
+                            ForEach(dayBlocks, id: \.block.objectID) { item in
+                                BlockRow(block: item.block, start: item.start, end: item.end) {
+                                    if isEditable { editingBlock = item.block }
+                                }
                             }
+                            .onDelete(perform: isEditable ? deleteBlocks : nil)
                         }
-                        .onDelete(perform: deleteBlocks)
+                        .listStyle(.plain)
                     }
-                    .listStyle(.plain)
                 }
             }
-            .navigationTitle(Date().formatted(.dateTime.weekday(.wide).day().month()))
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddBlock = true
-                    } label: {
-                        Image(systemName: "plus")
+                if !isToday {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Today") {
+                            withAnimation(.easeInOut) { selectedDate = Date() }
+                        }
+                    }
+                }
+                if isEditable {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showingAddBlock = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
                     }
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                Button {
-                    showingFindTime = true
-                } label: {
-                    Label("Find my time", systemImage: "sparkles")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                if isEditable {
+                    Button {
+                        showingFindTime = true
+                    } label: {
+                        Label("Find my time", systemImage: "sparkles")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding()
+                    .guideAnchor(.findTime)
                 }
-                .buttonStyle(.borderedProminent)
-                .padding()
-                .guideAnchor(.findTime)
             }
             .sheet(isPresented: $showingAddBlock) {
-                AddBlockSheet()
+                AddBlockSheet(day: selectedDate)
             }
             .sheet(isPresented: $showingFindTime) {
-                FindTimeSheet(intervals: intervals)
+                FindTimeSheet(intervals: intervals, date: selectedDate)
             }
             .sheet(item: $editingBlock) { block in
                 EditBlockSheet(block: block)
@@ -98,43 +121,147 @@ struct TodayView: View {
         .onChange(of: hasCompletedOnboarding) { _, done in
             if done { maybeStartGuide() }
         }
-        .onChange(of: guide.isActive) { _, active in
-            if !active { hasSeenTodayGuide = true }
-        }
     }
 
     private func maybeStartGuide() {
         guard hasCompletedOnboarding, !guide.isActive else { return }
         guard !showingAddBlock, !showingFindTime, editingBlock == nil else { return }
-        if alwaysShowGuide || !hasSeenTodayGuide {
+        guard showGuide else { return }
+        // Show the tips only on the blank "main" page (a brand-new user with no
+        // schedule yet), never over an existing schedule. Either way it's a
+        // one-shot: the toggle turns itself off after this first eligible visit,
+        // so it won't reappear unless switched back on in Settings.
+        if allBlocks.isEmpty {
             guide.start()
         }
+        showGuide = false
     }
 
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Text("🌸")
-                .font(.system(size: 56))
-            Text("Your day is a blank page")
-                .font(.title3.bold())
-            Text("Add your kids' routines, chores and appointments — then let the app find the pockets of time that belong to you.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Add your first block") {
-                showingAddBlock = true
+        if isEditable {
+            VStack(spacing: 12) {
+                Text("🌸")
+                    .font(.system(size: 56))
+                Text("Your day is a blank page")
+                    .font(.title3.bold())
+                Text("Add your kids' routines, chores and appointments — then let the app find the pockets of time that belong to you.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Add your first block") {
+                    showingAddBlock = true
+                }
+                .buttonStyle(.bordered)
+                .guideAnchor(.addBlock)
             }
-            .buttonStyle(.bordered)
-            .guideAnchor(.addBlock)
+            .padding(32)
+            .frame(maxHeight: .infinity)
+        } else {
+            VStack(spacing: 12) {
+                Text("🗓️")
+                    .font(.system(size: 56))
+                Text("Nothing was scheduled")
+                    .font(.title3.bold())
+                Text("This day is in the past and has no blocks to show.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(32)
+            .frame(maxHeight: .infinity)
         }
-        .padding(32)
     }
 
     private func deleteBlocks(at offsets: IndexSet) {
         for index in offsets {
-            context.delete(todaysBlocks[index].block)
+            context.delete(dayBlocks[index].block)
         }
         try? context.save()
+    }
+}
+
+private struct WeekStrip: View {
+    @Binding var date: Date
+
+    private let calendar = Calendar.current
+
+    private var weekDates: [Date] {
+        guard let start = calendar.dateInterval(of: .weekOfYear, for: date)?.start else { return [] }
+        return (0..<7).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            VStack(spacing: 2) {
+                if let relative = relativeLabel {
+                    Text(relative.uppercased())
+                        .font(.caption2.bold())
+                        .foregroundStyle(.pink)
+                }
+                Text(date.formatted(.dateTime.weekday(.wide).day().month()))
+                    .font(.title3.bold())
+            }
+
+            HStack(spacing: 0) {
+                ForEach(weekDates, id: \.self) { day in
+                    dayCell(day)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 24)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    if value.translation.width < -40 {
+                        shiftWeek(by: 1)
+                    } else if value.translation.width > 40 {
+                        shiftWeek(by: -1)
+                    }
+                }
+        )
+    }
+
+    private func dayCell(_ day: Date) -> some View {
+        let isSelected = calendar.isDate(day, inSameDayAs: date)
+        let isToday = calendar.isDateInToday(day)
+        return VStack(spacing: 6) {
+            Text(day.formatted(.dateTime.weekday(.narrow)))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(day.formatted(.dateTime.day()))
+                .font(.subheadline.weight(isSelected ? .bold : .regular))
+                .foregroundStyle(isSelected ? .white : (isToday ? .pink : .primary))
+                .frame(width: 36, height: 36)
+                .background {
+                    if isSelected {
+                        Circle().fill(.pink)
+                    } else if isToday {
+                        Circle().fill(.pink.opacity(0.15))
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut) { date = day }
+        }
+    }
+
+    private var relativeLabel: String? {
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInTomorrow(date) { return "Tomorrow" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        return nil
+    }
+
+    private func shiftWeek(by weeks: Int) {
+        guard let newDate = calendar.date(byAdding: .weekOfYear, value: weeks, to: date) else { return }
+        withAnimation(.easeInOut) { date = newDate }
     }
 }
 
