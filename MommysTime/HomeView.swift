@@ -36,6 +36,8 @@ struct HomeView: View {
     @AppStorage(SettingsKeys.pumpIntervalHours) private var pumpIntervalHours = 3
 
     @State private var showingNotifications = false
+    @State private var showingPlanOptions = false
+    @State private var sharePlan: SharePlan?
 
     var body: some View {
         NavigationStack {
@@ -48,13 +50,93 @@ struct HomeView: View {
                     premiumSection
                 }
                 .padding()
+                .padding(.bottom, 80)
             }
             .background(Color(.systemGroupedBackground))
+            .overlay(alignment: .bottom) { planButton }
             .navigationBarHidden(true)
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
             }
+            .sheet(item: $sharePlan) { plan in
+                PlanShareView(plan: plan)
+            }
         }
+    }
+
+    // MARK: Generate & share plan
+
+    private var planButton: some View {
+        Button {
+            showingPlanOptions = true
+        } label: {
+            Label("Share plan", systemImage: "paperplane.fill")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 14)
+                .background(
+                    LinearGradient(colors: [.pink, Color.pink.opacity(0.8)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: Capsule()
+                )
+                .shadow(color: .pink.opacity(0.4), radius: 8, y: 4)
+        }
+        .padding(.bottom, 12)
+        .confirmationDialog("Generate a plan to share", isPresented: $showingPlanOptions, titleVisibility: .visible) {
+            Button("Today's plan") {
+                sharePlan = SharePlan(title: "Today's plan", text: planText(for: Date()))
+            }
+            Button("Tomorrow's plan") {
+                if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) {
+                    sharePlan = SharePlan(title: "Tomorrow's plan", text: planText(for: tomorrow))
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Share the day's schedule and appointments with a caregiver.")
+        }
+    }
+
+    private func planText(for day: Date) -> String {
+        let calendar = Calendar.current
+        let dayLabel = day.formatted(.dateTime.weekday(.wide).day().month())
+        var lines = ["🌸 Plan for \(dayLabel)", ""]
+
+        let blocks = allBlocks
+            .compactMap { block in block.resolvedTimes(on: day).map { (block, $0.start, $0.end) } }
+            .sorted { $0.1 < $1.1 }
+        if !blocks.isEmpty {
+            lines.append("Schedule:")
+            for (block, start, end) in blocks {
+                let s = start.formatted(.dateTime.hour().minute())
+                let e = end.formatted(.dateTime.hour().minute())
+                lines.append("• \(s)–\(e)  \(block.title ?? "")")
+            }
+            lines.append("")
+        }
+
+        let dayAppointments = appointments
+            .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+        if !dayAppointments.isEmpty {
+            lines.append("Appointments:")
+            for appt in dayAppointments {
+                let time = appt.date?.formatted(.dateTime.hour().minute()) ?? ""
+                var line = "• \(time)  \(appt.title ?? "")"
+                if let location = appt.location, !location.isEmpty { line += " @ \(location)" }
+                lines.append(line)
+            }
+            lines.append("")
+        }
+
+        if blocks.isEmpty && dayAppointments.isEmpty {
+            lines.append("Nothing scheduled yet.")
+            lines.append("")
+        }
+
+        lines.append("Sent with love from MommysTime 💛")
+        return lines.joined(separator: "\n")
     }
 
     // MARK: 1 & 2 — Greeting + notification
@@ -187,6 +269,18 @@ struct HomeView: View {
                 } label: {
                     TileLabel(title: "Pump Tracker", systemImage: "drop.fill", color: .cyan)
                 }
+
+                NavigationLink {
+                    FeedLogView()
+                } label: {
+                    TileLabel(title: "Feed Log", systemImage: "cup.and.saucer.fill", color: .mint)
+                }
+
+                NavigationLink {
+                    GrowthLogView()
+                } label: {
+                    TileLabel(title: "Growth Log", systemImage: "ruler.fill", color: .indigo)
+                }
             }
         }
     }
@@ -208,6 +302,12 @@ struct HomeView: View {
                     MySpendingView()
                 } label: {
                     TileLabel(title: "My Spending", systemImage: "dollarsign.circle.fill", color: .pink, isPremium: true)
+                }
+
+                NavigationLink {
+                    SyncToCloudView()
+                } label: {
+                    TileLabel(title: "Sync to Cloud", systemImage: "icloud.and.arrow.up.fill", color: .pink, isPremium: true)
                 }
             }
         }
@@ -340,6 +440,40 @@ private struct NotificationsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+struct SharePlan: Identifiable {
+    let id = UUID()
+    let title: String
+    let text: String
+}
+
+private struct PlanShareView: View {
+    let plan: SharePlan
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(plan.text)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .navigationTitle(plan.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    ShareLink(item: plan.text) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
         }
