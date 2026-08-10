@@ -8,6 +8,7 @@ enum SettingsKeys {
     static let maxSlotMinutes = "maxSlotMinutes"
     static let hasCompletedOnboarding = "hasCompletedOnboarding"
     static let showGuide = "showGuide"
+    static let pumpIntervalHours = "pumpIntervalHours"
 }
 
 struct ContentView: View {
