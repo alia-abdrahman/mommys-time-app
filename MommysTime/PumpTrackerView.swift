@@ -7,6 +7,7 @@ enum PumpSide {
 
 struct PumpTrackerView: View {
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \PumpSession.date, ascending: false)],
         animation: .default
@@ -17,84 +18,149 @@ struct PumpTrackerView: View {
 
     @State private var showingLog = false
     @State private var editing: PumpSession?
+    @State private var toast: String?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                nextCard
-                todayCard
-                historySection
+        VStack(spacing: 0) {
+            header
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    heroCard
+                    statsCard.padding(.top, 10)
+
+                    if !sessions.isEmpty {
+                        Text("HISTORY")
+                            .font(.nunito(12, .heavy))
+                            .tracking(0.8)
+                            .foregroundStyle(PT.textMuted)
+                            .padding(.top, 12)
+                            .padding(.bottom, 7)
+                        VStack(spacing: 7) {
+                            ForEach(sessions, id: \.objectID) { session in
+                                PumpSessionRow(session: session) { editing = session }
+                                    .contextMenu {
+                                        Button("Edit") { editing = session }
+                                        Button("Delete", role: .destructive) { delete(session) }
+                                    }
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 18)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 96)
             }
-            .padding()
         }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Pump Tracker")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingLog = true } label: { Image(systemName: "plus") }
-            }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PT.screenBg.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingLog) {
-            PumpSessionSheet()
+            PumpSessionSheet { showToast($0) }
         }
         .sheet(item: $editing) { session in
             PumpSessionSheet(session: session)
         }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 190)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
     }
 
-    // MARK: Next session
+    // MARK: Header
 
-    private var nextCard: some View {
-        VStack(spacing: 14) {
+    private var header: some View {
+        ZStack {
+            Text("Pump Tracker")
+                .font(.baloo(19, heavy: true))
+                .foregroundStyle(PT.textPrimary)
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(PT.backIcon)
+                        .frame(width: 38, height: 38)
+                        .background(.white, in: Circle())
+                        .shadow(color: Color(hex: 0x7A6248).opacity(0.12), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Color.clear.frame(width: 38, height: 38)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+    }
+
+    // MARK: Hero card
+
+    private var heroCard: some View {
+        VStack(spacing: 0) {
             Image(systemName: "drop.fill")
-                .font(.largeTitle)
-                .foregroundStyle(.cyan)
-            Text(nextText)
-                .font(.title3.bold())
+                .font(.system(size: 19))
+                .foregroundStyle(PT.blueAccent)
+                .frame(width: 38, height: 38)
+                .background(.white, in: Circle())
+                .padding(.bottom, 8)
+
+            Text(statusText)
+                .font(.baloo(20, heavy: true))
+                .foregroundStyle(PT.blueDeep)
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 6) {
                 Text("Pump every")
-                    .foregroundStyle(.secondary)
+                    .font(.nunito(13, .bold))
+                    .foregroundStyle(PT.blueMid)
                 Menu {
                     ForEach(1...6, id: \.self) { hours in
                         Button("\(hours) hour\(hours == 1 ? "" : "s")") { intervalHours = hours }
                     }
                 } label: {
                     Text("\(intervalHours)h")
-                        .font(.subheadline.bold())
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.cyan.opacity(0.2), in: Capsule())
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(PT.bluePill)
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 9)
+                        .background(.white, in: Capsule())
                 }
             }
-            .font(.subheadline)
+            .padding(.top, 4)
 
-            Button {
-                showingLog = true
-            } label: {
-                Label("Log a session", systemImage: "plus.circle.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+            Button { showingLog = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold))
+                    Text("Log a session").font(.baloo(16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(PT.blueAccent, in: Capsule())
+                .shadow(color: PT.blueAccent.opacity(0.4), radius: 18, y: 8)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.cyan)
+            .buttonStyle(.plain)
+            .padding(.top, 14)
         }
         .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color.cyan.opacity(0.12), in: RoundedRectangle(cornerRadius: 20))
+        .padding(.vertical, 14)
+        .padding(.horizontal, 20)
+        .background(PT.blueFill, in: RoundedRectangle(cornerRadius: 28))
     }
 
-    private var nextText: String {
-        guard let next = nextSessionDate else {
-            return "Log your first session to start tracking 🍼"
-        }
-        if next > Date() {
-            return "Next session \(timeUntil(next))"
-        }
-        return "Session due now 🍼"
+    private var statusText: String {
+        guard let next = nextSessionDate else { return "Log your first session" }
+        if next <= Date() { return "Session due now" }
+        return "Next in \(countdown(to: next))"
+    }
+
+    private func countdown(to date: Date) -> String {
+        let minutes = max(1, Int(date.timeIntervalSinceNow / 60))
+        if minutes < 60 { return "\(minutes)m" }
+        let h = minutes / 60, m = minutes % 60
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
     }
 
     private var nextSessionDate: Date? {
@@ -102,27 +168,27 @@ struct PumpTrackerView: View {
         return last.addingTimeInterval(Double(intervalHours) * 3600)
     }
 
-    // MARK: Today summary
+    // MARK: Stats card
 
-    private var todayCard: some View {
-        HStack {
-            summaryStat(value: "\(todaySessions.count)", label: todaySessions.count == 1 ? "session today" : "sessions today")
-            Divider().frame(height: 36)
-            summaryStat(value: "\(todayML)", label: "ml today")
+    private var statsCard: some View {
+        HStack(spacing: 0) {
+            statColumn(value: "\(todaySessions.count)", label: "sessions today")
+            Rectangle().fill(PT.divider).frame(width: 1)
+            statColumn(value: "\(todayML)", label: "ml today")
         }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        .padding(12)
+        .background(.white, in: RoundedRectangle(cornerRadius: 24))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
     }
 
-    private func summaryStat(value: String, label: String) -> some View {
+    private func statColumn(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.title2.bold())
-                .foregroundStyle(.cyan)
+                .font(.baloo(22, heavy: true))
+                .foregroundStyle(PT.blueAccent)
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.nunito(11.5, .bold))
+                .foregroundStyle(PT.textMuted)
         }
         .frame(maxWidth: .infinity)
     }
@@ -135,56 +201,22 @@ struct PumpTrackerView: View {
         todaySessions.reduce(0) { $0 + Int($1.amountML) }
     }
 
-    // MARK: History
-
-    @ViewBuilder
-    private var historySection: some View {
-        if sessions.isEmpty {
-            VStack(spacing: 10) {
-                Text("No sessions logged yet")
-                    .font(.headline)
-                Text("Tap “Log a session” after you pump to keep a record and get your next-session reminder.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 24)
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("History")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                ForEach(sessions, id: \.objectID) { session in
-                    PumpSessionCard(session: session)
-                        .contentShape(Rectangle())
-                        .onTapGesture { editing = session }
-                        .contextMenu {
-                            Button("Edit") { editing = session }
-                            Button("Delete", role: .destructive) { delete(session) }
-                        }
-                }
-            }
-        }
-    }
-
     private func delete(_ session: PumpSession) {
         context.delete(session)
         try? context.save()
     }
 
-    private func timeUntil(_ date: Date) -> String {
-        let minutes = max(0, Int(date.timeIntervalSinceNow / 60))
-        if minutes < 1 { return "now" }
-        if minutes < 60 { return "in \(minutes) min" }
-        let hours = minutes / 60
-        let remainder = minutes % 60
-        return remainder == 0 ? "in \(hours)h" : "in \(hours)h \(remainder)m"
+    private func showToast(_ message: String) {
+        withAnimation { toast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
     }
 }
 
-private struct PumpSessionCard: View {
+private struct PumpSessionRow: View {
     @ObservedObject var session: PumpSession
+    var onTap: () -> Void
 
     private var detail: String {
         var parts = ["\(session.durationMinutes) min"]
@@ -196,113 +228,288 @@ private struct PumpSessionCard: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "drop.fill")
-                .foregroundStyle(.cyan)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 3) {
-                if let date = session.date {
-                    Text(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
-                        .font(.body)
-                }
+                .font(.system(size: 13))
+                .foregroundStyle(PT.blueAccent)
+                .frame(width: 30, height: 30)
+                .background(.white, in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text((session.date ?? Date()).formatted(.dateTime.weekday(.abbreviated).hour().minute()))
+                    .font(.nunito(14.5, .heavy))
+                    .foregroundStyle(PT.textPrimary)
                 Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.nunito(12, .semibold))
+                    .foregroundStyle(PT.textMuted)
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .padding()
-        .background(Color.cyan.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PT.blueRow, in: RoundedRectangle(cornerRadius: 20))
+        .contentShape(RoundedRectangle(cornerRadius: 20))
+        .onTapGesture(perform: onTap)
     }
+}
+
+// MARK: - Pump tracker palette
+
+private enum PT {
+    static let screenBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let blueFill = Color(hex: 0xE2EDF3)
+    static let blueRow = Color(hex: 0xE9F1F6)
+    static let blueDeep = Color(hex: 0x3E566A)
+    static let blueMid = Color(hex: 0x7B93A5)
+    static let blueAccent = Color(hex: 0x6D91AB)
+    static let bluePill = Color(hex: 0x4E7488)
+    static let divider = Color(hex: 0x7A6248).opacity(0.12)
+    static let backIcon = Color(hex: 0x8B7F72)
 }
 
 struct PumpSessionSheet: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(SettingsKeys.pumpIntervalHours) private var intervalHours = 3
 
     let session: PumpSession?
+    var onLogged: (String) -> Void = { _ in }
 
     @State private var date: Date
     @State private var duration: Int
     @State private var amount: Int
     @State private var side: String
-    @State private var notes: String
-    @State private var showingDeleteConfirmation = false
+    @State private var addToFeed = false
 
-    init(session: PumpSession? = nil) {
+    init(session: PumpSession? = nil, onLogged: @escaping (String) -> Void = { _ in }) {
         self.session = session
+        self.onLogged = onLogged
         _date = State(initialValue: session?.date ?? Date())
-        _duration = State(initialValue: Int(session?.durationMinutes ?? 15))
-        _amount = State(initialValue: Int(session?.amountML ?? 0))
+        _duration = State(initialValue: Int(session?.durationMinutes ?? 20))
+        _amount = State(initialValue: Int(session?.amountML ?? 110))
         _side = State(initialValue: session?.side ?? "Both")
-        _notes = State(initialValue: session?.notes ?? "")
     }
 
     private var isEditing: Bool { session != nil }
+    private var canSave: Bool { duration > 0 }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Session") {
-                    DatePicker("Time", selection: $date)
-                    HStack {
-                        Text("Duration")
-                        Spacer()
-                        TextField("0", value: $duration, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 50)
-                        Text("min").foregroundStyle(.secondary)
-                        Stepper("", value: $duration, in: 0...180).labelsHidden()
-                    }
-                    HStack {
-                        Text("Amount")
-                        Spacer()
-                        TextField("0", value: $amount, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 60)
-                        Text("ml").foregroundStyle(.secondary)
-                    }
-                    Picker("Side", selection: $side) {
-                        ForEach(PumpSide.all, id: \.self) { Text($0).tag($0) }
-                    }
-                }
-                Section("Notes") {
-                    TextField("Anything to note…", text: $notes, axis: .vertical)
-                        .lineLimit(3, reservesSpace: true)
-                }
-                if isEditing {
-                    Section {
-                        Button("Delete session", role: .destructive) {
-                            showingDeleteConfirmation = true
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                volumeHero.padding(.top, 20)
+                sectionLabel("SIDE").padding(.top, 20).padding(.bottom, 8)
+                sideSegments
+                sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
+                detailsCard
+                footerNote.padding(.top, 14)
             }
-            .navigationTitle(isEditing ? "Edit Session" : "Log Session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+            .padding(.top, 18)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(LS.sheetBg)
+        .presentationDetents([.large])
+        .presentationBackground(LS.sheetBg)
+        .presentationDragIndicator(.hidden)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        ZStack {
+            Text(isEditing ? "Edit Session" : "Log Session")
+                .font(.baloo(17, heavy: true))
+                .foregroundStyle(LS.textPrimary)
+            HStack {
+                Button { dismiss() } label: {
+                    Text("Cancel")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(LS.textSecondary)
+                        .padding(.vertical, 8).padding(.horizontal, 16)
+                        .background(.white, in: Capsule())
+                        .shadow(color: Color(hex: 0x7A6248).opacity(0.1), radius: 10, y: 3)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                .buttonStyle(.plain)
+                Spacer()
+                Button { save() } label: {
+                    Text("Save")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(canSave ? .white : LS.disabledText)
+                        .padding(.vertical, 8).padding(.horizontal, 18)
+                        .background(canSave ? LS.accentRose : LS.disabledBg, in: Capsule())
                 }
-            }
-            .confirmationDialog(
-                "Delete this session?",
-                isPresented: $showingDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) { deleteSession() }
-                Button("Cancel", role: .cancel) {}
+                .buttonStyle(.plain)
+                .disabled(!canSave)
             }
         }
     }
 
+    // MARK: Volume hero
+
+    private var volumeHero: some View {
+        VStack(spacing: 0) {
+            Text("Volume expressed")
+                .font(.nunito(12, .bold))
+                .foregroundStyle(LS.blueMid)
+            HStack(alignment: .lastTextBaseline, spacing: 3) {
+                Text("\(amount)")
+                    .font(.baloo(42, heavy: true))
+                    .foregroundStyle(LS.blueDeep)
+                Text("ml")
+                    .font(.baloo(17, heavy: true))
+                    .foregroundStyle(LS.blueMid)
+            }
+            .padding(.top, 4)
+            HStack(spacing: 10) {
+                Button { amount = max(0, amount - 10) } label: {
+                    Text("−").font(.nunito(20, .heavy)).foregroundStyle(LS.blueMid)
+                        .frame(width: 46, height: 46).background(.white, in: Circle())
+                        .shadow(color: Color(hex: 0x3E566A).opacity(0.12), radius: 12, y: 4)
+                }
+                .buttonStyle(.plain)
+                VStack(spacing: 0) {
+                    Text("10 ml"); Text("steps")
+                }
+                .font(.nunito(12, .bold)).foregroundStyle(LS.blueMid).frame(minWidth: 46)
+                Button { amount = min(500, amount + 10) } label: {
+                    Text("+").font(.nunito(20, .heavy)).foregroundStyle(.white)
+                        .frame(width: 46, height: 46).background(LS.blueAccent, in: Circle())
+                        .shadow(color: LS.blueAccent.opacity(0.4), radius: 16, y: 6)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(18)
+        .background(LS.blueFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    // MARK: Side
+
+    private var sideSegments: some View {
+        HStack(spacing: 8) {
+            ForEach(PumpSide.all, id: \.self) { seg in
+                let sel = seg == side
+                Button { side = seg } label: {
+                    Text(seg)
+                        .font(.nunito(13.5, .heavy))
+                        .foregroundStyle(sel ? .white : LS.bluePill)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(sel ? LS.blueAccent : LS.blueFill, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.nunito(12, .heavy)).tracking(0.8)
+            .foregroundStyle(LS.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Details card
+
+    private var detailsCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Started").font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
+                Spacer()
+                stepper(value: date.formatted(.dateTime.hour().minute()),
+                        onMinus: { date = date.addingTimeInterval(-15 * 60) },
+                        onPlus: { date = date.addingTimeInterval(15 * 60) })
+            }
+            .padding(.vertical, 12)
+
+            rowDivider
+
+            HStack {
+                Text("Duration").font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
+                Spacer()
+                stepper(value: durationLabel(duration),
+                        onMinus: { duration = max(5, duration - 5) },
+                        onPlus: { duration = min(90, duration + 5) })
+            }
+            .padding(.vertical, 12)
+
+            rowDivider
+
+            HStack {
+                Text("Add to feed log too").font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
+                Spacer()
+                Button { addToFeed.toggle() } label: {
+                    ZStack(alignment: addToFeed ? .trailing : .leading) {
+                        Capsule().fill(addToFeed ? LS.toggleOn : LS.toggleOff).frame(width: 50, height: 30)
+                        Circle().fill(.white).frame(width: 24, height: 24)
+                            .shadow(color: .black.opacity(0.15), radius: 2.5, y: 2).padding(3)
+                    }
+                }
+                .buttonStyle(.plain)
+                .animation(.spring(response: 0.25, dampingFraction: 0.75), value: addToFeed)
+            }
+            .padding(.vertical, 14)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 4)
+        .background(.white, in: RoundedRectangle(cornerRadius: 26))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+    }
+
+    private func stepper(value: String, onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
+        HStack(spacing: 0) {
+            Button(action: onMinus) {
+                Text("−").font(.nunito(16, .heavy)).foregroundStyle(LS.textSecondary).frame(width: 36, height: 32)
+            }
+            .buttonStyle(.plain)
+            Text(value).font(.nunito(13, .heavy)).foregroundStyle(LS.valueText).frame(minWidth: 84)
+            Button(action: onPlus) {
+                Text("+").font(.nunito(16, .heavy)).foregroundStyle(LS.blueAccent).frame(width: 36, height: 32)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(LS.fieldFill, in: Capsule())
+    }
+
+    private var rowDivider: some View {
+        Rectangle().fill(Color(hex: 0x7A6248).opacity(0.1)).frame(height: 1)
+    }
+
+    // MARK: Footer note
+
+    private var footerNote: some View {
+        Text(noteText)
+            .font(.nunito(12.5, .bold)).lineSpacing(6)
+            .foregroundStyle(LS.bluePill)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 14).padding(.horizontal, 16)
+            .background(LS.blueNote, in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    private var noteText: String {
+        if amount <= 0 {
+            return "Logging a dry session is fine — it still counts toward your rhythm."
+        }
+        let nextDue = date.addingTimeInterval(Double(intervalHours) * 3600)
+            .formatted(.dateTime.hour().minute())
+        return "That's \(amount) ml in \(durationLabel(duration)). Next session due around \(nextDue)."
+    }
+
+    private func durationLabel(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        let h = m / 60, r = m % 60
+        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+    }
+
+    // MARK: Save
+
     private func save() {
+        guard canSave else { return }
+        let isNew = session == nil
         let target = session ?? PumpSession(context: context)
-        if session == nil {
+        if isNew {
             target.id = UUID()
             target.createdAt = Date()
         }
@@ -310,16 +517,43 @@ struct PumpSessionSheet: View {
         target.durationMinutes = Int32(duration)
         target.amountML = Int32(amount)
         target.side = side
-        target.notes = notes
-        try? context.save()
-        dismiss()
-    }
 
-    private func deleteSession() {
-        if let session {
-            context.delete(session)
-            try? context.save()
+        if isNew && addToFeed {
+            let feed = FeedSession(context: context)
+            feed.id = UUID()
+            feed.createdAt = Date()
+            feed.date = date
+            feed.type = "Bottle"
+            feed.amountML = Int32(amount)
+            feed.notes = "pumped"
+        }
+
+        try? context.save()
+        if isNew {
+            onLogged(addToFeed ? "Session logged and added to feeds" : "Pump session logged")
         }
         dismiss()
     }
+}
+
+// MARK: - Log Session palette
+
+private enum LS {
+    static let sheetBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textSecondary = Color(hex: 0x8A7E72)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let blueFill = Color(hex: 0xE2EDF3)
+    static let blueNote = Color(hex: 0xE9F1F6)
+    static let blueDeep = Color(hex: 0x3E566A)
+    static let blueMid = Color(hex: 0x7B93A5)
+    static let blueAccent = Color(hex: 0x6D91AB)
+    static let bluePill = Color(hex: 0x4E7488)
+    static let fieldFill = Color(hex: 0xF4EDE4)
+    static let valueText = Color(hex: 0x6E6358)
+    static let accentRose = Color(hex: 0xD98FA0)
+    static let disabledBg = Color(hex: 0xF0E7DC)
+    static let disabledText = Color(hex: 0xB7AA9B)
+    static let toggleOff = Color(hex: 0xE7DFD4)
+    static let toggleOn = Color(hex: 0x7FBFAE)
 }

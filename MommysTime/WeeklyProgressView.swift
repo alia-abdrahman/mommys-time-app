@@ -3,82 +3,132 @@ import CoreData
 
 struct WeeklyProgressView: View {
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \MeTimeSession.date, ascending: false)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \ScheduleBlock.startTime, ascending: true)],
         animation: .default
     )
-    private var allSessions: FetchedResults<MeTimeSession>
+    private var allBlocks: FetchedResults<ScheduleBlock>
 
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Goal.createdAt, ascending: true)],
-        animation: .default
-    )
-    private var goals: FetchedResults<Goal>
-
-    private var thisWeeksSessions: [MeTimeSession] {
-        guard let week = Calendar.current.dateInterval(of: .weekOfYear, for: Date()) else { return [] }
-        return allSessions.filter { session in
-            guard let date = session.date else { return false }
-            return week.contains(date)
-        }
+    /// Monday-first list of this week's 7 days.
+    private var weekDays: [Date] {
+        var cal = Calendar.current
+        cal.firstWeekday = 2
+        guard let start = cal.dateInterval(of: .weekOfYear, for: Date())?.start else { return [] }
+        return (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
     }
 
-    private var completedMinutes: Int {
-        thisWeeksSessions.filter(\.completed).reduce(0) { $0 + Int($1.durationMinutes) }
+    /// Minutes of booked me-time on a given day (Schedule "Me-time" blocks only).
+    private func minutes(on day: Date) -> Int {
+        allBlocks
+            .filter { $0.blockCategory == .meTime }
+            .compactMap { $0.resolvedTimes(on: day) }
+            .reduce(0) { $0 + Int($1.end.timeIntervalSince($1.start) / 60) }
     }
 
-    private var headline: String {
-        switch completedMinutes {
-        case 0:
-            return "This week is still young. Your time will come, mama 🌱"
-        case ..<60:
-            return "You gave yourself \(completedMinutes) minutes this week. Every minute counts 💛"
-        case ..<180:
-            return "You gave yourself \(timeLabel) this week — lovely 💛"
-        default:
-            return "Amazing! \(timeLabel) of me-time this week 🌟"
-        }
-    }
+    private var dayMinutes: [Int] { weekDays.map { minutes(on: $0) } }
+    private var totalMinutes: Int { dayMinutes.reduce(0, +) }
 
-    private var timeLabel: String {
-        let hours = completedMinutes / 60
-        let minutes = completedMinutes % 60
-        if hours == 0 { return "\(minutes)m" }
-        if minutes == 0 { return "\(hours)h" }
-        return "\(hours)h \(minutes)m"
+    private func totalLabel(_ m: Int) -> String {
+        if m == 0 { return "0m" }
+        if m < 60 { return "\(m) min" }
+        let h = m / 60, r = m % 60
+        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(timeLabel)
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                            .foregroundStyle(.pink)
-                        Text(headline)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 8)
-                } header: {
-                    Text("Me-time this week")
-                }
+        VStack(spacing: 0) {
+            HStack {
+                Text("Progress")
+                    .font(.baloo(30, heavy: true))
+                    .foregroundStyle(PR.textPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
 
-                if !goals.isEmpty {
-                    Section("By goal") {
-                        ForEach(goals, id: \.objectID) { goal in
-                            GoalRow(goal: goal)
-                        }
-                    }
-                }
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("ME-TIME THIS WEEK")
+                        .font(.nunito(12, .heavy)).tracking(0.8)
+                        .foregroundStyle(PR.textMuted)
+                        .padding(.bottom, 8)
 
-                Section {
-                    Text("No streaks, no guilt. Some weeks belong entirely to the kids — and that's okay. The app will keep finding pockets of time for you. 🤍")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    weekCard
+                    reassuranceNote.padding(.top, 14)
+                }
+                .padding(.top, 16)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 96)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PR.screenBg.ignoresSafeArea())
+    }
+
+    private var weekCard: some View {
+        let minutes = dayMinutes
+        let busiest = max(60, minutes.max() ?? 0)
+        let labels = ["M", "T", "W", "T", "F", "S", "S"]
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(totalLabel(totalMinutes))
+                .font(.baloo(40, heavy: true))
+                .foregroundStyle(PR.roseAccent)
+            Text(totalMinutes > 0
+                 ? "Booked and yours. Protect it."
+                 : "This week is still young. Your time will come, mama.")
+                .font(.nunito(14))
+                .lineSpacing(5)
+                .foregroundStyle(PR.bodyText)
+                .padding(.top, 6)
+
+            HStack(alignment: .bottom, spacing: 6) {
+                ForEach(0..<7, id: \.self) { i in
+                    let m = minutes[i]
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(m > 0 ? PR.roseAccent : PR.emptyBar)
+                        .frame(height: m > 0 ? max(16, 16 + 48 * CGFloat(m) / CGFloat(busiest)) : 14)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("Progress")
+            .frame(height: 64, alignment: .bottom)
+            .padding(.top, 16)
+
+            HStack(spacing: 6) {
+                ForEach(0..<7, id: \.self) { i in
+                    Text(labels[i])
+                        .font(.nunito(10.5, .bold))
+                        .foregroundStyle(PR.barLabel)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(20)
+        .background(.white, in: RoundedRectangle(cornerRadius: 28))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.1), radius: 16, y: 6)
     }
+
+    private var reassuranceNote: some View {
+        Text("No streaks, no guilt. Some weeks belong entirely to the kids — and that's okay. The app will keep finding pockets of time for you.")
+            .font(.nunito(13, .bold)).lineSpacing(6)
+            .foregroundStyle(PR.noteText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 16).padding(.horizontal, 18)
+            .background(PR.noteBg, in: RoundedRectangle(cornerRadius: 24))
+    }
+}
+
+// MARK: - Progress palette
+
+private enum PR {
+    static let screenBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let bodyText = Color(hex: 0x8A7E72)
+    static let roseAccent = Color(hex: 0xD98FA0)
+    static let emptyBar = Color(hex: 0xF0E7DC)
+    static let barLabel = Color(hex: 0xB7AA9B)
+    static let noteBg = Color(hex: 0xFBEBD8)
+    static let noteText = Color(hex: 0x8A6A44)
 }

@@ -7,6 +7,7 @@ enum FeedType {
 
 struct FeedLogView: View {
     @Environment(\.managedObjectContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \FeedSession.date, ascending: false)],
         animation: .default
@@ -15,103 +16,157 @@ struct FeedLogView: View {
 
     @State private var showingAdd = false
     @State private var editing: FeedSession?
+    @State private var toast: String?
 
     private var todayFeeds: [FeedSession] {
         feeds.filter { Calendar.current.isDateInToday($0.date ?? .distantPast) }
     }
 
+    /// ml today sums bottle volumes only — breast/solid contribute 0.
     private var todayML: Int {
-        todayFeeds.reduce(0) { $0 + Int($1.amountML) }
+        todayFeeds.filter { $0.type == "Bottle" }.reduce(0) { $0 + Int($1.amountML) }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                summaryCard
-                if feeds.isEmpty {
-                    emptyState
-                } else {
-                    history
-                }
-            }
-            .padding()
-        }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Feed Log")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingAdd = true } label: { Image(systemName: "plus") }
-            }
-        }
-        .sheet(isPresented: $showingAdd) { FeedSheet() }
-        .sheet(item: $editing) { feed in FeedSheet(feed: feed) }
-    }
+        VStack(spacing: 0) {
+            header
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    heroCard
 
-    private var summaryCard: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "cup.and.saucer.fill")
-                .font(.largeTitle)
-                .foregroundStyle(.mint)
-            if let last = feeds.first?.date {
-                Text("Last feed \(relative(last))")
-                    .font(.title3.bold())
-            } else {
-                Text("No feeds logged yet 🍼")
-                    .font(.title3.bold())
-            }
-            HStack {
-                stat(value: "\(todayFeeds.count)", label: todayFeeds.count == 1 ? "feed today" : "feeds today")
-                Divider().frame(height: 32)
-                stat(value: "\(todayML)", label: "ml today")
-            }
-            Button { showingAdd = true } label: {
-                Label("Log a feed", systemImage: "plus.circle.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.mint)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
-        .background(Color.mint.opacity(0.12), in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    private func stat(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.title2.bold()).foregroundStyle(.mint)
-            Text(label).font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var history: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("History").font(.headline).foregroundStyle(.secondary)
-            ForEach(feeds, id: \.objectID) { feed in
-                FeedCard(feed: feed)
-                    .contentShape(Rectangle())
-                    .onTapGesture { editing = feed }
-                    .contextMenu {
-                        Button("Edit") { editing = feed }
-                        Button("Delete", role: .destructive) { delete(feed) }
+                    if feeds.isEmpty {
+                        emptyState
+                    } else {
+                        Text("HISTORY")
+                            .font(.nunito(12, .heavy)).tracking(0.8)
+                            .foregroundStyle(FL.textMuted)
+                            .padding(.top, 16).padding(.bottom, 8)
+                        VStack(spacing: 9) {
+                            ForEach(feeds, id: \.objectID) { feed in
+                                FeedRow(feed: feed) { editing = feed }
+                                    .contextMenu {
+                                        Button("Edit") { editing = feed }
+                                        Button("Delete", role: .destructive) { delete(feed) }
+                                    }
+                            }
+                        }
                     }
+                }
+                .padding(.top, 18)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 96)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(FL.screenBg.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showingAdd) { FeedSheet { showToast($0) } }
+        .sheet(item: $editing) { feed in FeedSheet(feed: feed) }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 190)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation { toast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
+    }
+
+    private var header: some View {
+        ZStack {
+            Text("Feed Log")
+                .font(.baloo(19, heavy: true))
+                .foregroundStyle(FL.textPrimary)
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(FL.backIcon)
+                        .frame(width: 38, height: 38)
+                        .background(.white, in: Circle())
+                        .shadow(color: Color(hex: 0x7A6248).opacity(0.12), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Color.clear.frame(width: 38, height: 38)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+    }
+
+    private var heroCard: some View {
+        VStack(spacing: 0) {
+            Image("feed-log")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 22)
+                .foregroundStyle(FL.greenAccent)
+                .frame(width: 46, height: 46)
+                .background(.white, in: Circle())
+                .padding(.bottom, 10)
+
+            Text(feeds.first?.date.map { "Last feed \(relative($0))" } ?? "No feeds logged yet")
+                .font(.baloo(19, heavy: true))
+                .foregroundStyle(FL.greenDeep)
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 0) {
+                statColumn(value: "\(todayFeeds.count)", label: "feeds today")
+                Rectangle().fill(FL.divider).frame(width: 1)
+                statColumn(value: "\(todayML)", label: "ml today")
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
+            Button { showingAdd = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold))
+                    Text("Log a feed").font(.baloo(16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(FL.greenAccent, in: Capsule())
+                .shadow(color: FL.greenAccent.opacity(0.35), radius: 18, y: 8)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 12)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(20)
+        .background(FL.greenFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    private func statColumn(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.baloo(22, heavy: true)).foregroundStyle(FL.greenAccent)
+            Text(label).font(.nunito(11.5, .bold)).foregroundStyle(FL.greenMid)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Text("Track every feed")
-                .font(.headline)
+                .font(.baloo(18, heavy: true))
+                .foregroundStyle(FL.textPrimary)
             Text("Log breast, bottle and solid feeds to spot your baby's rhythm.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.nunito(14))
+                .foregroundStyle(FL.textMuted)
                 .multilineTextAlignment(.center)
         }
-        .padding(.top, 12)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 30)
+        .padding(.horizontal, 20)
     }
 
     private func delete(_ feed: FeedSession) {
@@ -129,40 +184,67 @@ struct FeedLogView: View {
     }
 }
 
-private struct FeedCard: View {
+private struct FeedRow: View {
     @ObservedObject var feed: FeedSession
+    var onTap: () -> Void
 
-    private var detail: String {
-        var parts: [String] = []
-        if feed.durationMinutes > 0 { parts.append("\(feed.durationMinutes) min") }
-        if feed.amountML > 0 { parts.append("\(feed.amountML) ml") }
-        if let side = feed.side, !side.isEmpty { parts.append(side) }
-        return parts.joined(separator: " · ")
+    private var kindLine: String {
+        let type = feed.type ?? "Feed"
+        let time = (feed.date ?? Date()).formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        return "\(type) · \(time)"
+    }
+
+    private var detailLine: String {
+        let pumped = (feed.notes ?? "").contains("pumped")
+        let leftSome = feed.finished ? "" : " · left some"
+        switch feed.type {
+        case "Bottle":
+            guard feed.amountML > 0 else { return feed.finished ? "—" : "left some" }
+            return "\(feed.amountML) ml" + (pumped ? " (pumped)" : "") + leftSome
+        case "Breast":
+            var parts: [String] = []
+            if feed.durationMinutes > 0 { parts.append("\(feed.durationMinutes) min") }
+            if let side = feed.side, !side.isEmpty { parts.append(side) }
+            return parts.isEmpty ? (feed.finished ? "—" : "left some") : parts.joined(separator: " · ") + leftSome
+        case "Solid":
+            guard feed.amountML > 0 else { return feed.finished ? "—" : "left some" }
+            return "\(feed.amountML) g" + leftSome
+        default:
+            return "—"
+        }
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "cup.and.saucer.fill")
-                .foregroundStyle(.mint)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(feed.type ?? "Feed").font(.body)
-                    if let date = feed.date {
-                        Text("·").foregroundStyle(.secondary)
-                        Text(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                if !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 2) {
+            Text(kindLine)
+                .font(.nunito(14.5, .heavy))
+                .foregroundStyle(FL.textPrimary)
+            Text(detailLine)
+                .font(.nunito(12, .semibold))
+                .foregroundStyle(FL.textMuted)
         }
-        .padding()
-        .background(Color.mint.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(FL.greenRow, in: RoundedRectangle(cornerRadius: 20))
+        .contentShape(RoundedRectangle(cornerRadius: 20))
+        .onTapGesture(perform: onTap)
     }
+}
+
+// MARK: - Feed log palette
+
+private enum FL {
+    static let screenBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let greenFill = Color(hex: 0xDCEDE6)
+    static let greenRow = Color(hex: 0xE6F2ED)
+    static let greenDeep = Color(hex: 0x38604F)
+    static let greenMid = Color(hex: 0x7E9A8F)
+    static let greenAccent = Color(hex: 0x4E9E86)
+    static let divider = Color(hex: 0x4E9E86).opacity(0.25)
+    static let backIcon = Color(hex: 0x8B7F72)
 }
 
 struct FeedSheet: View {
@@ -170,80 +252,247 @@ struct FeedSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let feed: FeedSession?
+    var onLogged: (String) -> Void = { _ in }
 
     @State private var type: String
     @State private var date: Date
-    @State private var amount: Int
-    @State private var duration: Int
+    @State private var amount: Int      // bottle ml / solid g
+    @State private var duration: Int    // breast minutes
     @State private var side: String
-    @State private var notes: String
-    @State private var showingDeleteConfirmation = false
+    @State private var finished: Bool
 
-    init(feed: FeedSession? = nil) {
+    init(feed: FeedSession? = nil, onLogged: @escaping (String) -> Void = { _ in }) {
         self.feed = feed
-        _type = State(initialValue: feed?.type ?? "Breast")
+        self.onLogged = onLogged
+        _type = State(initialValue: feed?.type ?? "Bottle")
         _date = State(initialValue: feed?.date ?? Date())
-        _amount = State(initialValue: Int(feed?.amountML ?? 0))
-        _duration = State(initialValue: Int(feed?.durationMinutes ?? 0))
+        _amount = State(initialValue: Int(feed?.amountML ?? 120))
+        _duration = State(initialValue: Int(feed?.durationMinutes ?? 20))
         _side = State(initialValue: feed?.side ?? "Both")
-        _notes = State(initialValue: feed?.notes ?? "")
+        _finished = State(initialValue: feed?.finished ?? true)
     }
 
     private var isEditing: Bool { feed != nil }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Feed") {
-                    Picker("Type", selection: $type) {
-                        ForEach(FeedType.all, id: \.self) { Text($0).tag($0) }
-                    }
-                    DatePicker("Time", selection: $date)
-                    if type == "Breast" {
-                        Picker("Side", selection: $side) {
-                            ForEach(["Left", "Right", "Both"], id: \.self) { Text($0).tag($0) }
-                        }
-                        HStack {
-                            Text("Duration")
-                            Spacer()
-                            TextField("0", value: $duration, format: .number)
-                                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 50)
-                            Text("min").foregroundStyle(.secondary)
-                            Stepper("", value: $duration, in: 0...120).labelsHidden()
-                        }
-                    } else {
-                        HStack {
-                            Text("Amount")
-                            Spacer()
-                            TextField("0", value: $amount, format: .number)
-                                .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 60)
-                            Text("ml").foregroundStyle(.secondary)
-                        }
-                    }
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+
+                sectionLabel("FEED TYPE").padding(.top, 20).padding(.bottom, 8)
+                segments(options: FeedType.all, selection: type) { type = $0 }
+
+                metricHero.padding(.top, 16)
+
+                if type == "Breast" {
+                    sectionLabel("SIDE").padding(.top, 20).padding(.bottom, 8)
+                    segments(options: ["Left", "Right", "Both"], selection: side) { side = $0 }
                 }
-                Section("Notes") {
-                    TextField("Anything to note…", text: $notes, axis: .vertical)
-                        .lineLimit(2, reservesSpace: true)
-                }
-                if isEditing {
-                    Section {
-                        Button("Delete feed", role: .destructive) { showingDeleteConfirmation = true }
-                            .frame(maxWidth: .infinity)
-                    }
-                }
+
+                sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
+                detailsCard
+
+                footerNote.padding(.top, 14)
             }
-            .navigationTitle(isEditing ? "Edit Feed" : "Log Feed")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Save") { save() } }
-            }
-            .confirmationDialog("Delete this feed?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { deleteFeed() }
-                Button("Cancel", role: .cancel) {}
+            .padding(.top, 18)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+        }
+        .background(LF.sheetBg)
+        .presentationDetents([.large])
+        .presentationBackground(LF.sheetBg)
+        .presentationDragIndicator(.hidden)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        ZStack {
+            Text(isEditing ? "Edit Feed" : "Log Feed")
+                .font(.baloo(17, heavy: true))
+                .foregroundStyle(LF.textPrimary)
+            HStack {
+                Button { dismiss() } label: {
+                    Text("Cancel")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(LF.textSecondary)
+                        .padding(.vertical, 8).padding(.horizontal, 16)
+                        .background(.white, in: Capsule())
+                        .shadow(color: Color(hex: 0x7A6248).opacity(0.1), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Button { save() } label: {
+                    Text("Save")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 8).padding(.horizontal, 18)
+                        .background(LF.accentRose, in: Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.nunito(12, .heavy)).tracking(0.8)
+            .foregroundStyle(LF.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func segments(options: [String], selection: String, onSelect: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 8) {
+            ForEach(options, id: \.self) { opt in
+                let sel = opt == selection
+                Button { onSelect(opt) } label: {
+                    Text(opt)
+                        .font(.nunito(13.5, .heavy))
+                        .foregroundStyle(sel ? .white : LF.greenText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(sel ? LF.greenAccent : LF.greenFill, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: Metric hero
+
+    private var metricEyebrow: String {
+        switch type {
+        case "Breast": return "Time at the breast"
+        case "Solid": return "Portion offered"
+        default: return "Bottle volume"
+        }
+    }
+    private var metricUnit: String {
+        switch type {
+        case "Breast": return "min"
+        case "Solid": return "g"
+        default: return "ml"
+        }
+    }
+    private var metricValue: Int { type == "Breast" ? duration : amount }
+    private var stepCaption: String {
+        switch type {
+        case "Breast": return "5 min steps"
+        case "Solid": return "10 g steps"
+        default: return "10 ml steps"
+        }
+    }
+
+    private func stepMetric(_ delta: Int) {
+        if type == "Breast" {
+            duration = min(90, max(5, duration + delta * 5))
+        } else {
+            amount = min(500, max(0, amount + delta * 10))
+        }
+    }
+
+    private var metricHero: some View {
+        VStack(spacing: 0) {
+            Text(metricEyebrow)
+                .font(.nunito(12, .bold))
+                .foregroundStyle(LF.greenMid)
+            HStack(alignment: .lastTextBaseline, spacing: 3) {
+                Text("\(metricValue)")
+                    .font(.baloo(42, heavy: true))
+                    .foregroundStyle(LF.greenDeep)
+                Text(metricUnit)
+                    .font(.baloo(17, heavy: true))
+                    .foregroundStyle(LF.greenMid)
+            }
+            .padding(.top, 4)
+            HStack(spacing: 10) {
+                Button { stepMetric(-1) } label: {
+                    Text("−").font(.nunito(20, .heavy)).foregroundStyle(LF.greenMid)
+                        .frame(width: 46, height: 46).background(.white, in: Circle())
+                        .shadow(color: Color(hex: 0x38604F).opacity(0.12), radius: 12, y: 4)
+                }
+                .buttonStyle(.plain)
+                Text(stepCaption)
+                    .font(.nunito(12, .bold)).foregroundStyle(LF.greenMid).frame(minWidth: 46)
+                Button { stepMetric(1) } label: {
+                    Text("+").font(.nunito(20, .heavy)).foregroundStyle(.white)
+                        .frame(width: 46, height: 46).background(LF.greenAccent, in: Circle())
+                        .shadow(color: LF.greenAccent.opacity(0.35), radius: 16, y: 6)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(18)
+        .background(LF.greenFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    // MARK: Details card
+
+    private var detailsCard: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Time").font(.nunito(15, .bold)).foregroundStyle(LF.textPrimary)
+                Spacer()
+                HStack(spacing: 0) {
+                    Button { date = date.addingTimeInterval(-15 * 60) } label: {
+                        Text("−").font(.nunito(16, .heavy)).foregroundStyle(LF.textSecondary).frame(width: 36, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    Text(date.formatted(.dateTime.hour().minute()))
+                        .font(.nunito(13, .heavy)).foregroundStyle(LF.valueText).frame(minWidth: 84)
+                    Button { date = date.addingTimeInterval(15 * 60) } label: {
+                        Text("+").font(.nunito(16, .heavy)).foregroundStyle(LF.greenAccent).frame(width: 36, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(LF.fieldFill, in: Capsule())
+            }
+            .padding(.vertical, 12)
+
+            Rectangle().fill(Color(hex: 0x7A6248).opacity(0.1)).frame(height: 1)
+
+            HStack {
+                Text("Baby finished the feed").font(.nunito(15, .bold)).foregroundStyle(LF.textPrimary)
+                Spacer()
+                Button { finished.toggle() } label: {
+                    ZStack(alignment: finished ? .trailing : .leading) {
+                        Capsule().fill(finished ? LF.toggleOn : LF.toggleOff).frame(width: 50, height: 30)
+                        Circle().fill(.white).frame(width: 24, height: 24)
+                            .shadow(color: .black.opacity(0.15), radius: 2.5, y: 2).padding(3)
+                    }
+                }
+                .buttonStyle(.plain)
+                .animation(.spring(response: 0.25, dampingFraction: 0.75), value: finished)
+            }
+            .padding(.vertical, 14)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 4)
+        .background(.white, in: RoundedRectangle(cornerRadius: 26))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+    }
+
+    // MARK: Footer note
+
+    private var footerNote: some View {
+        Text(noteText)
+            .font(.nunito(12.5, .bold)).lineSpacing(6)
+            .foregroundStyle(LF.greenText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 14).padding(.horizontal, 16)
+            .background(LF.greenNote, in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    private var noteText: String {
+        switch type {
+        case "Breast": return "Breast feeds are tracked by time and side, not volume."
+        case "Solid": return "Solids are logged by portion — handy once weaning starts."
+        default: return "Bottle volume counts toward today's ml total."
+        }
+    }
+
+    // MARK: Save
 
     private func save() {
         let target = feed ?? FeedSession(context: context)
@@ -256,16 +505,29 @@ struct FeedSheet: View {
         target.amountML = type == "Breast" ? 0 : Int32(amount)
         target.durationMinutes = type == "Breast" ? Int32(duration) : 0
         target.side = type == "Breast" ? side : nil
-        target.notes = notes
+        target.finished = finished
         try? context.save()
+        if feed == nil { onLogged("\(type) feed logged") }
         dismiss()
     }
+}
 
-    private func deleteFeed() {
-        if let feed {
-            context.delete(feed)
-            try? context.save()
-        }
-        dismiss()
-    }
+// MARK: - Log Feed palette
+
+private enum LF {
+    static let sheetBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textSecondary = Color(hex: 0x8A7E72)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let greenFill = Color(hex: 0xDCEDE6)
+    static let greenNote = Color(hex: 0xE6F2ED)
+    static let greenDeep = Color(hex: 0x38604F)
+    static let greenMid = Color(hex: 0x7E9A8F)
+    static let greenAccent = Color(hex: 0x4E9E86)
+    static let greenText = Color(hex: 0x3E7A66)
+    static let fieldFill = Color(hex: 0xF4EDE4)
+    static let valueText = Color(hex: 0x6E6358)
+    static let accentRose = Color(hex: 0xD98FA0)
+    static let toggleOff = Color(hex: 0xE7DFD4)
+    static let toggleOn = Color(hex: 0x7FBFAE)
 }

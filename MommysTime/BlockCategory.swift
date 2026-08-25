@@ -31,11 +31,11 @@ enum BlockCategory: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
-        case .kids: return .blue
-        case .chores: return .orange
-        case .appointment: return .purple
-        case .quiet: return .indigo
-        case .meTime: return .pink
+        case .kids: return Color(hex: 0x7C77B5)      // Kids
+        case .chores: return Color(hex: 0xB98B58)    // Chores
+        case .appointment: return Color(hex: 0xC97B8C)
+        case .quiet: return Color(hex: 0x4E9E86)     // Baby / quiet time
+        case .meTime: return Color(hex: 0xD98FA0)    // Me-time
         }
     }
 }

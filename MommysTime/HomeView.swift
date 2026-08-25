@@ -34,109 +34,65 @@ struct HomeView: View {
     private var pumpSessions: FetchedResults<PumpSession>
 
     @AppStorage(SettingsKeys.pumpIntervalHours) private var pumpIntervalHours = 3
+    @AppStorage(SettingsKeys.isPremium) private var isPremium = false
 
     @State private var showingNotifications = false
-    @State private var showingPlanOptions = false
-    @State private var sharePlan: SharePlan?
+    @State private var showingPaywall = false
+    @State private var toast: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 18) {
                     header
                     banner
                     reminderCard
                     menuSection
-                    premiumSection
                 }
-                .padding()
-                .padding(.bottom, 80)
+                .padding(.horizontal, 22)
+                .padding(.top, 8)
+
+                // The premium section sits on top of the illustration, so the
+                // sky and sun show around and behind the premium tiles.
+                ZStack(alignment: .top) {
+                    backgroundIllustration
+                    premiumSection
+                        .padding(.horizontal, 22)
+                        .padding(.top, 18)
+                }
             }
-            .background(Color(.systemGroupedBackground))
-            .overlay(alignment: .bottom) { planButton }
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationBarHidden(true)
             .sheet(isPresented: $showingNotifications) {
                 NotificationsView()
             }
-            .sheet(item: $sharePlan) { plan in
-                PlanShareView(plan: plan)
+            .sheet(isPresented: $showingPaywall) {
+                PremiumPaywallView { showToast($0) }
             }
-        }
-    }
-
-    // MARK: Generate & share plan
-
-    private var planButton: some View {
-        Button {
-            showingPlanOptions = true
-        } label: {
-            Label("Share plan", systemImage: "paperplane.fill")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 14)
-                .background(
-                    LinearGradient(colors: [.pink, Color.pink.opacity(0.8)],
-                                   startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: Capsule()
-                )
-                .shadow(color: .pink.opacity(0.4), radius: 8, y: 4)
-        }
-        .padding(.bottom, 12)
-        .confirmationDialog("Generate a plan to share", isPresented: $showingPlanOptions, titleVisibility: .visible) {
-            Button("Today's plan") {
-                sharePlan = SharePlan(title: "Today's plan", text: planText(for: Date()))
-            }
-            Button("Tomorrow's plan") {
-                if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) {
-                    sharePlan = SharePlan(title: "Tomorrow's plan", text: planText(for: tomorrow))
+            .overlay(alignment: .bottom) {
+                if let toast {
+                    Toast(text: toast)
+                        .padding(.bottom, 190)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Share the day's schedule and appointments with a caregiver.")
         }
+        .tint(Theme.rose)
     }
 
-    private func planText(for day: Date) -> String {
-        let calendar = Calendar.current
-        let dayLabel = day.formatted(.dateTime.weekday(.wide).day().month())
-        var lines = ["🌸 Plan for \(dayLabel)", ""]
-
-        let blocks = allBlocks
-            .compactMap { block in block.resolvedTimes(on: day).map { (block, $0.start, $0.end) } }
-            .sorted { $0.1 < $1.1 }
-        if !blocks.isEmpty {
-            lines.append("Schedule:")
-            for (block, start, end) in blocks {
-                let s = start.formatted(.dateTime.hour().minute())
-                let e = end.formatted(.dateTime.hour().minute())
-                lines.append("• \(s)–\(e)  \(block.title ?? "")")
-            }
-            lines.append("")
-        }
-
-        let dayAppointments = appointments
-            .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
-            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
-        if !dayAppointments.isEmpty {
-            lines.append("Appointments:")
-            for appt in dayAppointments {
-                let time = appt.date?.formatted(.dateTime.hour().minute()) ?? ""
-                var line = "• \(time)  \(appt.title ?? "")"
-                if let location = appt.location, !location.isEmpty { line += " @ \(location)" }
-                lines.append(line)
-            }
-            lines.append("")
-        }
-
-        if blocks.isEmpty && dayAppointments.isEmpty {
-            lines.append("Nothing scheduled yet.")
-            lines.append("")
-        }
-
-        lines.append("Sent with love from MommysTime 💛")
-        return lines.joined(separator: "\n")
+    /// Soft mother-and-baby illustration that sits at the very bottom of the
+    /// scrolling home page. It fills the width and is shown in full (uncropped)
+    /// so scrolling to the bottom reveals the whole scene, and the scroll ends
+    /// exactly at the bottom edge of the illustration — no empty space below.
+    /// Its cream sky is the exact same colour as `Theme.canvas`, so the top edge
+    /// is pixel-identical to the background above it — there is no visible line
+    /// where the two meet.
+    private var backgroundIllustration: some View {
+        Image("HomeIllustration")
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 70)
     }
 
     // MARK: 1 & 2 — Greeting + notification
@@ -145,21 +101,33 @@ struct HomeView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(greeting)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text("Hello, mama 🌸")
-                    .font(.largeTitle.bold())
+                    .font(.nunito(13, .bold))
+                    .tracking(0.3)
+                    .foregroundStyle(Theme.inkMuted)
+                Text("Hello, mama")
+                    .font(.baloo(30, heavy: true))
+                    .foregroundStyle(Theme.ink)
             }
             Spacer()
             Button { showingNotifications = true } label: {
-                Image(systemName: "bell.fill")
-                    .font(.title3)
-                    .foregroundStyle(.orange)
-                    .frame(width: 48, height: 48)
-                    .background(Color.yellow.opacity(0.25), in: Circle())
+                Image("bell")
+                    .renderingMode(.original)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 21)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white, in: Circle())
+                    .overlay(alignment: .topTrailing) {
+                        Circle().fill(Theme.rose)
+                            .frame(width: 9, height: 9)
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                            .offset(x: -5, y: 5)
+                    }
+                    .shadow(color: Theme.cardShadow, radius: 7, y: 4)
             }
             .buttonStyle(.plain)
         }
+        .padding(.top, 52)
     }
 
     private var greeting: String {
@@ -170,27 +138,36 @@ struct HomeView: View {
         }
     }
 
+    private func showToast(_ message: String) {
+        withAnimation { toast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
+    }
+
     // MARK: 3 — Banner (tip of the day)
 
     private var banner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TIP OF THE DAY")
-                .font(.caption2.bold())
-                .foregroundStyle(.pink)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Circle().fill(Theme.tipIconBg)
+                    .frame(width: 20, height: 20)
+                    .overlay(Circle().fill(Theme.tipIconDot).frame(width: 7, height: 7))
+                Text("TIP OF THE DAY")
+                    .font(.nunito(11, .bold))
+                    .tracking(1.1)
+                    .foregroundStyle(Theme.tipLabel)
+            }
             Text(tipOfTheDay)
-                .font(.callout)
-                .foregroundStyle(.primary)
+                .font(.nunito(16, .bold))
+                .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(
-            LinearGradient(
-                colors: [Color.pink.opacity(0.18), Color.pink.opacity(0.08)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 20)
-        )
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
+        .shadow(color: Theme.cardShadow, radius: 10, y: 6)
     }
 
     private var tipOfTheDay: String {
@@ -199,34 +176,40 @@ struct HomeView: View {
     }
 
     private static let tips = [
-        "You can't pour from an empty cup. Ten minutes for you counts. 💛",
-        "Rest is productive too. The laundry can wait a little longer. 🌙",
-        "A calm mama is the best gift for your little ones. Breathe. 🌸",
+        "You can't pour from an empty cup. Ten minutes for you counts.",
+        "Rest is productive too. The laundry can wait a little longer.",
+        "A calm mama is the best gift for your little ones. Breathe.",
         "Done is better than perfect — especially today.",
-        "Small pockets of me-time add up to a whole happier you. ✨",
+        "Small pockets of me-time add up to a whole happier you.",
         "It's okay to ask for help. You don't have to do it all alone.",
-        "Celebrate the tiny wins. You're doing more than you think. 🌟",
+        "Celebrate the tiny wins. You're doing more than you think.",
     ]
 
     // MARK: 4 — Reminder
 
     private var reminderCard: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "bell.badge.fill")
-                .foregroundStyle(.orange)
+        HStack(spacing: 11) {
+            Circle().fill(Theme.reminderIconBg)
+                .frame(width: 28, height: 28)
+                .overlay(
+                    Image(systemName: "clock")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xB07F4E))
+                )
             Text(reminderText)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
+                .font(.nunito(14, .bold))
+                .foregroundStyle(Theme.reminderText)
             Spacer()
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.yellow.opacity(0.3), in: RoundedRectangle(cornerRadius: 16))
+        .background(Theme.reminderBg, in: RoundedRectangle(cornerRadius: 22))
     }
 
     private var reminderText: String {
         guard let next = nextEvent else {
-            return "Nothing else scheduled today — enjoy the calm. 🌸"
+            return "Nothing else scheduled today — enjoy the calm."
         }
         return "Next: \(next.title) \(timeUntil(next.date))"
     }
@@ -244,42 +227,41 @@ struct HomeView: View {
 
     private var menuSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Menu")
-                .font(.headline)
-            LazyVGrid(columns: columns, spacing: 16) {
+            sectionHeading("Menu")
+            LazyVGrid(columns: columns, spacing: 18) {
                 Button { selectedTab = AppTab.schedule } label: {
-                    TileLabel(title: "Schedule Builder", systemImage: "calendar", color: .blue)
+                    TileLabel(title: "Schedule Builder", asset: "schedule-builder", icon: Theme.tileGlyph, bg: Theme.peach)
                 }
                 .buttonStyle(.plain)
 
                 NavigationLink {
                     AppointmentsView()
                 } label: {
-                    TileLabel(title: "Appointment", systemImage: "calendar.badge.clock", color: .purple)
+                    TileLabel(title: "Appointment", asset: "appointment", icon: Theme.tileGlyph, bg: Theme.peach)
                 }
 
                 NavigationLink {
                     InventoryView()
                 } label: {
-                    TileLabel(title: "Inventory", systemImage: "archivebox.fill", color: .teal)
+                    TileLabel(title: "Inventory", asset: "inventory", icon: Theme.tileGlyph, bg: Theme.peach)
                 }
 
                 NavigationLink {
                     PumpTrackerView()
                 } label: {
-                    TileLabel(title: "Pump Tracker", systemImage: "drop.fill", color: .cyan)
+                    TileLabel(title: "Pump Tracker", asset: "pump-tracker", icon: Theme.tileGlyph, bg: Theme.peach)
                 }
 
                 NavigationLink {
                     FeedLogView()
                 } label: {
-                    TileLabel(title: "Feed Log", systemImage: "cup.and.saucer.fill", color: .mint)
+                    TileLabel(title: "Feed Log", asset: "feed-log", icon: Theme.tileGlyph, bg: Theme.peach)
                 }
 
                 NavigationLink {
                     GrowthLogView()
                 } label: {
-                    TileLabel(title: "Growth Log", systemImage: "ruler.fill", color: .indigo)
+                    TileLabel(title: "Growth Log", asset: "growth-log", icon: Theme.tileGlyph, bg: Theme.peach)
                 }
             }
         }
@@ -289,32 +271,52 @@ struct HomeView: View {
 
     private var premiumSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Premium")
-                .font(.headline)
-            LazyVGrid(columns: columns, spacing: 16) {
+            HStack {
+                sectionHeading("Premium")
+                Spacer()
+                Button {
+                    if isPremium { showToast("You're already Premium, mama") }
+                    else { showingPaywall = true }
+                } label: {
+                    Text(isPremium ? "Premium" : "Unlock all")
+                        .font(.nunito(11, .bold))
+                        .foregroundStyle(Theme.roseText)
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 5)
+                        .background(Theme.rosePillBg, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            LazyVGrid(columns: columns, spacing: 18) {
                 NavigationLink {
                     RecipesView()
                 } label: {
-                    TileLabel(title: "Recipes", systemImage: "fork.knife", color: .pink, isPremium: true)
+                    TileLabel(title: "Recipes", asset: "recipes", icon: Theme.tileGlyph, bg: Theme.peach, isPremium: true)
                 }
 
                 NavigationLink {
                     MySpendingView()
                 } label: {
-                    TileLabel(title: "My Spending", systemImage: "dollarsign.circle.fill", color: .pink, isPremium: true)
+                    TileLabel(title: "My Spending", asset: "my-spending", icon: Theme.tileGlyph, bg: Theme.peach, isPremium: true)
                 }
 
                 NavigationLink {
                     SyncToCloudView()
                 } label: {
-                    TileLabel(title: "Sync to Cloud", systemImage: "icloud.and.arrow.up.fill", color: .pink, isPremium: true)
+                    TileLabel(title: "Sync to Cloud", asset: "sync-to-cloud", icon: Theme.tileGlyph, bg: Theme.peach, isPremium: true)
                 }
             }
         }
     }
 
+    private func sectionHeading(_ text: String) -> some View {
+        Text(text)
+            .font(.baloo(17, heavy: true))
+            .foregroundStyle(Theme.ink)
+    }
+
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 16), count: 3)
+        Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
     }
 
     // MARK: Data helpers
@@ -352,30 +354,41 @@ struct HomeView: View {
 
 private struct TileLabel: View {
     let title: String
-    let systemImage: String
-    let color: Color
+    /// Name of the custom vector icon in the asset catalog (e.g. "feed-log").
+    let asset: String
+    /// Accent colour — used only for the premium lock badge.
+    let icon: Color
+    let bg: Color
     var isPremium = false
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 9) {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: systemImage)
-                    .font(.title2)
-                    .foregroundStyle(color)
-                    .frame(width: 68, height: 68)
-                    .background(color.opacity(isPremium ? 0.22 : 0.15), in: RoundedRectangle(cornerRadius: 18))
+                Circle()
+                    .fill(bg)
+                    .frame(width: 56, height: 56)
+                    .overlay(Circle().stroke(.white, lineWidth: 3))
+                    .overlay(
+                        Image(asset)
+                            .renderingMode(.original)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 26, height: 26)
+                    )
+                    .shadow(color: Theme.cardShadow, radius: 8, y: 5)
                 if isPremium {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(5)
-                        .background(color, in: Circle())
-                        .offset(x: 4, y: -4)
+                        .padding(4)
+                        .background(icon, in: Circle())
+                        .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                        .offset(x: 3, y: -3)
                 }
             }
             Text(title)
-                .font(.caption2)
-                .foregroundStyle(.primary)
+                .font(.nunito(12, .bold))
+                .foregroundStyle(Theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
         }
@@ -423,26 +436,59 @@ private struct NotificationsView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                Text("🔔")
-                    .font(.system(size: 56))
-                Text("You're all caught up")
-                    .font(.title3.bold())
-                Text("Reminders and gentle nudges will show up here.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(32)
-            .navigationTitle("Notifications")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+        VStack(spacing: 0) {
+            // Header: centered title + "Done" pill
+            ZStack {
+                Text("Notifications")
+                    .font(.baloo(20, heavy: true))
+                    .foregroundStyle(Theme.ink)
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Text("Done")
+                            .font(.nunito(16, .bold))
+                            .foregroundStyle(Theme.roseText)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(Theme.rosePillBg, in: Capsule())
+                    }
                 }
             }
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+
+            Spacer()
+            Spacer()
+            Spacer()
+
+            // Empty state
+            VStack(spacing: 22) {
+                Image("bell")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 46, height: 48)
+                    .foregroundStyle(Color(hex: 0xB07F4E))
+                    .frame(width: 120, height: 120)
+                    .background(Color(hex: 0xF7E0C6), in: Circle())
+                VStack(spacing: 12) {
+                    Text("You're all caught up")
+                        .font(.baloo(25, heavy: true))
+                        .foregroundStyle(Theme.ink)
+                    Text("Reminders and gentle nudges will show up here.")
+                        .font(.nunito(16))
+                        .foregroundStyle(Theme.inkMuted)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(.horizontal, 32)
+
+            Spacer()
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.canvas.ignoresSafeArea())
+        .presentationDragIndicator(.hidden)
     }
 }
 
@@ -452,7 +498,7 @@ struct SharePlan: Identifiable {
     let text: String
 }
 
-private struct PlanShareView: View {
+struct PlanShareView: View {
     let plan: SharePlan
     @Environment(\.dismiss) private var dismiss
 

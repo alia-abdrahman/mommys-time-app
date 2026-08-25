@@ -1,0 +1,15 @@
+{
+  "images" : [
+    {
+      "filename" : "nav-schedule-inactive.svg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  },
+  "properties" : {
+    "preserves-vector-representation" : true
+  }
+}
