@@ -67,7 +67,7 @@ struct ContentView: View {
             }
         }
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
-            OnboardingView()
+            OnboardingView { message in showToast(message) }
         }
     }
 

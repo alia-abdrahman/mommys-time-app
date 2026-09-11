@@ -79,8 +79,10 @@
         <attribute name="instructions" optional="YES" attributeType="String"/>
         <attribute name="isSaved" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="prepMinutes" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="servings" attributeType="Integer 32" defaultValueString="2" usesScalarValueType="YES"/>
         <attribute name="tag" optional="YES" attributeType="String"/>
         <attribute name="title" attributeType="String"/>
+        <attribute name="why" optional="YES" attributeType="String"/>
     </entity>
     <entity name="ScheduleBlock" representedClassName="ScheduleBlock" syncable="YES" codeGenerationType="class">
         <attribute name="category" attributeType="String" defaultValueString="chores"/>

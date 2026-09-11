@@ -1,586 +1,491 @@
 import SwiftUI
 
-/// Warm 7-step onboarding matching the "Mommy's Time" design: cream canvas,
-/// Baloo headings, dusty-rose accents, soft white cards and pill choices.
+/// Full-screen 7-step onboarding: welcome · baby · day · track · goal · care · done.
+/// Nothing is mandatory — every input has a working default so the user can tap
+/// straight through. The flow writes through only on the final CTA.
 struct OnboardingView: View {
-    // Persisted answers
+    @Environment(\.managedObjectContext) private var context
+
     @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
     @AppStorage(SettingsKeys.dayStartHour) private var dayStartHour = 6
     @AppStorage(SettingsKeys.dayEndHour) private var dayEndHour = 22
-    @AppStorage(SettingsKeys.babyName) private var babyName = ""
-    @AppStorage(SettingsKeys.babyAgeBand) private var ageBand = "0–6 months"
-    @AppStorage(SettingsKeys.trackers) private var trackersRaw = "Pump,Feeds,Appointments"
-    @AppStorage(SettingsKeys.goalTitle) private var goalTitle = ""
-    @AppStorage(SettingsKeys.goalTarget) private var goalTarget = 3
-    @AppStorage(SettingsKeys.caregiverName) private var caregiverName = ""
-    @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelation = "Husband"
+    @AppStorage(SettingsKeys.babyName) private var babyNameStore = ""
+    @AppStorage(SettingsKeys.babyAgeBand) private var ageBandStore = "0–6 months"
+    @AppStorage(SettingsKeys.trackers) private var trackersStore = "Pump,Feeds,Appointments"
+    @AppStorage(SettingsKeys.goalTitle) private var goalTitleStore = ""
+    @AppStorage(SettingsKeys.goalTarget) private var goalTargetStore = 3
+    @AppStorage(SettingsKeys.caregiverName) private var caregiverNameStore = ""
+    @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelationStore = "Husband"
 
+    /// Toast to raise on Home after skip/finish.
+    var onExit: (String) -> Void = { _ in }
+
+    // Working copies — persisted through only on finish.
     @State private var page = 0
-    @State private var customGoal = ""
+    @State private var babyName = ""
+    @State private var ageBand = "0–6 months"
+    @State private var startMin = 360      // 6:00 AM
+    @State private var endMin = 1320       // 10:00 PM
+    @State private var trackers: Set<String> = ["Pump", "Feeds", "Appointments"]
+    @State private var goal = ""
+    @State private var target = 3
+    @State private var caregiverName = ""
+    @State private var relation = "Husband"
     @FocusState private var focused: Bool
 
     private let total = 7
     private var lastPage: Int { total - 1 }
 
-    private var trackers: Set<String> {
-        Set(trackersRaw.split(separator: ",").map(String.init).filter { !$0.isEmpty })
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             topBar
-            TabView(selection: $page) {
-                welcomePage.tag(0)
-                babyPage.tag(1)
-                dayPage.tag(2)
-                trackingPage.tag(3)
-                goalPage.tag(4)
-                caregiverPage.tag(5)
-                summaryPage.tag(6)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.25), value: page)
-
-            primaryButton
+            body(for: page)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            primaryCTA
         }
-        .background(Theme.canvas.ignoresSafeArea())
-        .tint(Ob.accent)
+        .background(OB.screenBg.ignoresSafeArea())
+        .onAppear(perform: seedFromStore)
+        .contentShape(Rectangle())
+        .onTapGesture { focused = false }
     }
 
-    // MARK: - Top bar (back · dots · skip)
+    // MARK: - Top bar
 
     private var topBar: some View {
-        ZStack {
-            ProgressDots(total: total, current: page)
-            HStack {
-                if page > 0 {
-                    Button { withAnimation { page -= 1 } } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Theme.ink)
-                            .frame(width: 46, height: 46)
-                            .background(.white, in: Circle())
-                            .shadow(color: Theme.cardShadow, radius: 6, y: 3)
-                    }
-                } else {
-                    Color.clear.frame(width: 46, height: 46)
-                }
-                Spacer()
-                if page < lastPage {
-                    Button { finish() } label: {
-                        Text("Skip")
-                            .font(.nunito(16, .bold))
-                            .foregroundStyle(Theme.inkMuted)
-                    }
-                    .frame(height: 46)
-                } else {
-                    Color.clear.frame(width: 46, height: 46)
-                }
+        HStack {
+            Button { withAnimation { page -= 1 } } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(OB.backIcon)
+                    .frame(width: 36, height: 36)
+                    .background(.white, in: Circle())
+                    .shadow(color: Color(hex: 0x7A6248).opacity(0.12), radius: 10, y: 3)
             }
+            .buttonStyle(.plain)
+            .opacity(page == 0 ? 0 : 1)
+            .disabled(page == 0)
+
+            Spacer()
+            dots
+            Spacer()
+
+            Button { skip() } label: {
+                Text("Skip")
+                    .font(.nunito(13, .heavy))
+                    .foregroundStyle(OB.skipText)
+                    .padding(.vertical, 8).padding(.horizontal, 14)
+            }
+            .opacity(page == lastPage ? 0 : 1)
+            .disabled(page == lastPage)
         }
+        .frame(height: 36)
+        .padding(.top, 20)
         .padding(.horizontal, 22)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
     }
 
-    // MARK: - Page 1 · Welcome
+    private var dots: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<total, id: \.self) { i in
+                Capsule()
+                    .fill(i == page ? OB.dotActive : (i < page ? OB.dotPast : OB.dotFuture))
+                    .frame(width: i == page ? 20 : 6, height: 6)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: page)
+            }
+        }
+    }
 
-    private var welcomePage: some View {
-        PageScroll {
-            VStack(spacing: 6) {
+    // MARK: - Body router
+
+    @ViewBuilder
+    private func body(for step: Int) -> some View {
+        switch step {
+        case 0: welcomeStep
+        case 1: babyStep
+        case 2: dayStep
+        case 3: trackStep
+        case 4: goalStep
+        case 5: careStep
+        default: doneStep
+        }
+    }
+
+    // MARK: - Step 1 · Welcome
+
+    private var welcomeStep: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
                 Text("WELCOME TO")
-                    .font(.nunito(14, .bold))
-                    .tracking(2)
-                    .foregroundStyle(Theme.roseText)
+                    .font(.nunito(12, .heavy)).tracking(1.6)
+                    .foregroundStyle(OB.roseAccent)
                 Text("Mommy's Time")
-                    .font(.baloo(34, heavy: true))
-                    .foregroundStyle(Theme.ink)
-                Text("You already run the whole day. This app maps it out, then finds the pockets that belong to you.")
-                    .font(.nunito(16))
-                    .foregroundStyle(Theme.inkMuted)
-                    .multilineTextAlignment(.center)
+                    .font(.baloo(36, heavy: true))
+                    .foregroundStyle(OB.textPrimary)
                     .padding(.top, 4)
-                    .padding(.horizontal, 4)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 20)
-
-            VStack(spacing: 16) {
-                FeatureCard(circle: Theme.amberBg, title: "Map the day", subtitle: "Routines, chores, appointments")
-                FeatureCard(circle: Ob.pink, title: "Find your pockets", subtitle: "Real gaps, not wishful thinking")
-                FeatureCard(circle: Theme.sageBg, title: "Share the load", subtitle: "Send the plan to your caregiver")
-            }
-            .padding(.top, 28)
-        }
-    }
-
-    // MARK: - Page 2 · Baby
-
-    private var babyPage: some View {
-        PageScroll {
-            Header(title: "Who are we caring for?", subtitle: "This shapes your feed, pump and growth logs.")
-
-            InputField(placeholder: "Baby's name", text: $babyName, focused: $focused)
-                .padding(.top, 22)
-
-            FieldLabel("HOW OLD?")
-                .padding(.top, 26)
-            FlowPills(["Newborn", "0–6 months", "6–12 months", "1 year +"], selection: ageBand) { ageBand = $0 }
-                .padding(.top, 10)
-        }
-    }
-
-    // MARK: - Page 3 · Day
-
-    private var dayPage: some View {
-        PageScroll {
-            Header(title: "When does your day run?", subtitle: "The app only looks for me-time between these hours.")
-
-            VStack(spacing: 0) {
-                StepperRow(label: "Starts", value: Self.hourLabel(dayStartHour),
-                           onMinus: { dayStartHour = wrap(dayStartHour - 1) },
-                           onPlus: { dayStartHour = wrap(dayStartHour + 1) })
-                Divider().padding(.leading, 20)
-                StepperRow(label: "Ends", value: Self.hourLabel(dayEndHour),
-                           onMinus: { dayEndHour = wrap(dayEndHour - 1) },
-                           onPlus: { dayEndHour = wrap(dayEndHour + 1) })
-            }
-            .background(.white, in: RoundedRectangle(cornerRadius: 28))
-            .shadow(color: Theme.cardShadow, radius: 10, y: 6)
-            .padding(.top, 22)
-
-            InfoBanner("That's \(onDutyHours)h on duty. We'll look for your time inside it.")
-                .padding(.top, 18)
-        }
-    }
-
-    // MARK: - Page 4 · Tracking
-
-    private var trackingPage: some View {
-        PageScroll {
-            Header(title: "What should we keep track of?", subtitle: "Pick as many as you like — you can change this later.")
-
-            let items: [(String, Color)] = [
-                ("Pump", Theme.dustyBlueBg), ("Feeds", Theme.sageBg),
-                ("Growth", Theme.periwinkleBg), ("Inventory", Theme.tealBg),
-                ("Spending", Theme.amberBg), ("Appointments", Theme.lilacBg),
-            ]
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 14) {
-                ForEach(items, id: \.0) { name, tint in
-                    TrackTile(title: name, circle: tint, selected: trackers.contains(name)) {
-                        toggleTracker(name)
-                    }
-                }
-            }
-            .padding(.top, 22)
-        }
-    }
-
-    // MARK: - Page 5 · Goal
-
-    private var goalPage: some View {
-        PageScroll {
-            Header(title: "What's one thing just for you?", subtitle: "The app will hunt for time to make it happen.")
-
-            FlowPills(["Read a book", "Stitch & craft", "Move my body", "Learn a language", "Just rest"],
-                      selection: goalTitle) { goalTitle = ($0 == goalTitle ? "" : $0); customGoal = "" }
-                .padding(.top, 22)
-
-            VStack(spacing: 0) {
-                TextField("Or write your own", text: $customGoal)
-                    .font(.nunito(16, .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .focused($focused)
-                    .onChange(of: customGoal) { _, v in if !v.isEmpty { goalTitle = "" } }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 18)
-                Divider().padding(.leading, 20)
-                HStack {
-                    Text("Target: \(goalTarget)× a week")
-                        .font(.nunito(16, .semibold))
-                        .foregroundStyle(Theme.ink)
-                    Spacer()
-                    MiniStepper(onMinus: { goalTarget = max(1, goalTarget - 1) },
-                                onPlus: { goalTarget = min(14, goalTarget + 1) })
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 14)
-            }
-            .background(.white, in: RoundedRectangle(cornerRadius: 28))
-            .shadow(color: Theme.cardShadow, radius: 10, y: 6)
-            .padding(.top, 18)
-        }
-    }
-
-    // MARK: - Page 6 · Caregiver
-
-    private var caregiverPage: some View {
-        PageScroll {
-            Header(title: "Who shares the load?", subtitle: "You'll be able to send them today's plan in one tap.")
-
-            InputField(placeholder: "Their name", text: $caregiverName, focused: $focused)
-                .padding(.top, 22)
-
-            FieldLabel("THEY ARE MY")
-                .padding(.top, 26)
-            FlowPills(["Husband", "Wife", "Partner", "Mum", "Nanny"], selection: caregiverRelation) { caregiverRelation = $0 }
-                .padding(.top, 10)
-
-            InfoBanner("Nothing is sent until you tap Share — no accounts, no invites.")
-                .padding(.top, 22)
-        }
-    }
-
-    // MARK: - Page 7 · Summary
-
-    private var summaryPage: some View {
-        PageScroll {
-            VStack(spacing: 8) {
-                Text("You're all set")
-                    .font(.baloo(32, heavy: true))
-                    .foregroundStyle(Theme.ink)
-                Text("Here's what's set up. Change any of it in Settings.")
-                    .font(.nunito(16))
-                    .foregroundStyle(Theme.inkMuted)
+                Text("You already run the whole day. This app maps it out, then finds the pockets that belong to you.")
+                    .font(.nunito(15)).lineSpacing(6)
+                    .foregroundStyle(OB.textMuted)
                     .multilineTextAlignment(.center)
+                    .padding(.top, 12).padding(.horizontal, 8)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.top, 16)
 
             VStack(spacing: 12) {
-                SummaryRow("Baby", "\(babyName.isEmpty ? "Not set" : babyName) · \(ageBand)")
-                SummaryRow("Your day", "\(Self.hourLabel(dayStartHour)) – \(Self.hourLabel(dayEndHour))")
-                SummaryRow("Tracking", "\(trackers.count) logs")
-                SummaryRow("Your goal", resolvedGoal.isEmpty ? "Skipped" : resolvedGoal)
-                SummaryRow("Sharing with", caregiverName.isEmpty ? "Nobody yet" : caregiverName)
+                promiseCard("calendar", "Map the day", "Routines, chores, appointments")
+                promiseCard("magnifyingglass", "Find your pockets", "Real gaps, not wishful thinking")
+                promiseCard("paperplane", "Share the load", "Send the plan to your caregiver")
             }
-            .padding(.top, 28)
+            .padding(.top, 30)
         }
+        .padding(.top, 44)
+        .padding(.horizontal, 24)
     }
 
-    // MARK: - Primary button
-
-    private var primaryButton: some View {
-        Button(action: primaryAction) {
-            Text(page == 0 ? "Let's set up" : page == lastPage ? "Open my app" : "Continue")
-                .font(.baloo(20))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-                .background(Ob.accent, in: Capsule())
-                .shadow(color: Ob.accent.opacity(0.4), radius: 12, y: 6)
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 6)
-        .padding(.bottom, 18)
-    }
-
-    // MARK: - Logic
-
-    private func primaryAction() {
-        focused = false
-        if page == lastPage { finish() } else { withAnimation { page += 1 } }
-    }
-
-    private func finish() {
-        if !customGoal.isEmpty { goalTitle = customGoal }
-        hasCompletedOnboarding = true
-    }
-
-    private var resolvedGoal: String { customGoal.isEmpty ? goalTitle : customGoal }
-
-    private func toggleTracker(_ name: String) {
-        var set = trackers
-        if set.contains(name) { set.remove(name) } else { set.insert(name) }
-        trackersRaw = set.sorted().joined(separator: ",")
-    }
-
-    private var onDutyHours: Int {
-        let diff = dayEndHour - dayStartHour
-        return diff <= 0 ? diff + 24 : diff
-    }
-
-    private func wrap(_ h: Int) -> Int { ((h % 24) + 24) % 24 }
-
-    static func hourLabel(_ hour: Int) -> String {
-        let h = ((hour % 24) + 24) % 24
-        let date = Calendar.current.date(bySettingHour: h, minute: 0, second: 0, of: Date()) ?? Date()
-        return date.formatted(.dateTime.hour().minute())
-    }
-}
-
-// MARK: - Palette
-
-private enum Ob {
-    static let accent = Color(hex: 0xD9758C)
-    static let pink = Color(hex: 0xFBE4E8)
-}
-
-// MARK: - Shared layout
-
-private struct PageScroll<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                content()
+    private func promiseCard(_ glyph: String, _ title: String, _ sub: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: glyph)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(OB.glyphRose)
+                .frame(width: 42, height: 42)
+                .background(OB.tileFill, in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.nunito(15.5, .heavy)).foregroundStyle(OB.textPrimary)
+                Text(sub).font(.nunito(12.5, .semibold)).foregroundStyle(OB.textMuted)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 22)
-            .padding(.bottom, 24)
+            Spacer(minLength: 0)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .padding(.vertical, 17).padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white, in: RoundedRectangle(cornerRadius: 24))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 12, y: 4)
     }
-}
 
-private struct Header: View {
-    let title: String
-    let subtitle: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.baloo(29, heavy: true))
-                .foregroundStyle(Theme.ink)
+    // MARK: - Step 2 · Baby
+
+    private var babyStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heading("Who are we caring for?", "This shapes your feed, pump and growth logs.")
+            nameCard(placeholder: "Baby's name", text: $babyName).padding(.top, 18)
+            fieldLabel("HOW OLD?").padding(.top, 20).padding(.bottom, 9)
+            chips(["Newborn", "0–6 months", "6–12 months", "1 year +"], selected: ageBand) { ageBand = $0 }
+        }
+        .padding(.top, 20).padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 3 · Day
+
+    private var dayStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heading("When does your day run?", "We only look for me-time between these hours.")
+            VStack(spacing: 0) {
+                dayRow("Starts", value: timeLabel(startMin),
+                       onMinus: { startMin = max(240, startMin - 30) },
+                       onPlus: { startMin = min(endMin - 120, startMin + 30) })
+                Rectangle().fill(OB.divider).frame(height: 1)
+                dayRow("Ends", value: timeLabel(endMin),
+                       onMinus: { endMin = max(startMin + 120, endMin - 30) },
+                       onPlus: { endMin = min(1410, endMin + 30) })
+            }
+            .padding(.horizontal, 18).padding(.vertical, 4)
+            .background(.white, in: RoundedRectangle(cornerRadius: 26))
+            .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+            .padding(.top, 18)
+
+            note("That's \(onDutyLabel) on duty. We'll look for your time inside it.")
+                .padding(.top, 14)
+        }
+        .padding(.top, 20).padding(.horizontal, 24)
+    }
+
+    private func dayRow(_ label: String, value: String, onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
+        HStack {
+            Text(label).font(.nunito(15, .bold)).foregroundStyle(OB.textPrimary)
+            Spacer()
+            HStack(spacing: 0) {
+                Button(action: onMinus) {
+                    Text("−").font(.nunito(16, .heavy)).foregroundStyle(OB.textSecondary).frame(width: 36, height: 32)
+                }.buttonStyle(.plain)
+                Text(value).font(.nunito(13, .heavy)).foregroundStyle(OB.valueText).frame(minWidth: 84)
+                Button(action: onPlus) {
+                    Text("+").font(.nunito(16, .heavy)).foregroundStyle(OB.roseAccent).frame(width: 36, height: 32)
+                }.buttonStyle(.plain)
+            }
+            .background(OB.fieldFill, in: Capsule())
+        }
+        .padding(.vertical, 12)
+    }
+
+    // MARK: - Step 4 · Track
+
+    private let trackOptions: [(String, String)] = [
+        ("Pump", "pump-tracker"), ("Feeds", "feed-log"), ("Growth", "growth-log"),
+        ("Inventory", "inventory"), ("Spending", "my-spending"), ("Appointments", "appointment"),
+    ]
+
+    private var trackStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heading("What should we keep track of?", "Pick what's useful — you can change this later.")
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(trackOptions, id: \.0) { name, asset in
+                    let on = trackers.contains(name)
+                    Button {
+                        if on { trackers.remove(name) } else { trackers.insert(name) }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(asset).renderingMode(.template).resizable().scaledToFit()
+                                .frame(width: 17, height: 17)
+                                .foregroundStyle(OB.glyphRose)
+                                .frame(width: 34, height: 34)
+                                .background(OB.tileFill, in: Circle())
+                            Text(name).font(.nunito(13.5, .heavy)).foregroundStyle(OB.textPrimary)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 13).padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 22))
+                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(on ? OB.roseCTA : .clear, lineWidth: 2))
+                        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 12, y: 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 16)
+        }
+        .padding(.top, 20).padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 5 · Goal
+
+    private var goalStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heading("What's one thing just for you?", "The app will hunt for time to make it happen.")
+            chips(["Read a book", "Stitch & craft", "Move my body", "Learn a language", "Just rest"],
+                  selected: goal) { goal = ($0 == goal ? "" : $0) }
+                .padding(.top, 16)
+
+            VStack(spacing: 0) {
+                TextField("Or write your own", text: $goal)
+                    .font(.nunito(15, .bold)).foregroundStyle(OB.textPrimary).tint(OB.roseCTA)
+                    .focused($focused)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 14)
+                Rectangle().fill(OB.divider).frame(height: 1)
+                HStack {
+                    Text("Target: \(target)× a week").font(.nunito(15, .bold)).foregroundStyle(OB.textPrimary)
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Button { target = max(1, target - 1) } label: {
+                            Text("−").font(.nunito(16, .heavy)).foregroundStyle(OB.textSecondary).frame(width: 38, height: 34)
+                        }.buttonStyle(.plain)
+                        Rectangle().fill(Color(hex: 0x7A6248).opacity(0.18)).frame(width: 1, height: 18)
+                        Button { target = min(7, target + 1) } label: {
+                            Text("+").font(.nunito(16, .heavy)).foregroundStyle(OB.roseAccent).frame(width: 38, height: 34)
+                        }.buttonStyle(.plain)
+                    }
+                    .background(OB.fieldFill, in: Capsule())
+                }
+                .padding(.vertical, 12)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 4)
+            .background(.white, in: RoundedRectangle(cornerRadius: 26))
+            .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+            .padding(.top, 14)
+        }
+        .padding(.top, 20).padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 6 · Care
+
+    private var careStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heading("Who shares the load?", "You'll be able to send them the plan in one tap.")
+            nameCard(placeholder: "Their name", text: $caregiverName).padding(.top, 18)
+            fieldLabel("THEY ARE MY").padding(.top, 20).padding(.bottom, 9)
+            chips(["Husband", "Wife", "Partner", "Mum", "Nanny"], selected: relation) { relation = $0 }
+            note("Nothing is sent until you tap Share — no accounts, no invites.").padding(.top, 16)
+        }
+        .padding(.top, 20).padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 7 · Done
+
+    private var doneStep: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                Text(babyName.isEmpty ? "You're all set" : "You and \(babyName) are set")
+                    .font(.baloo(30, heavy: true))
+                    .foregroundStyle(OB.textPrimary)
+                    .multilineTextAlignment(.center)
+                Text("Here's what's set up. Change any of it in Settings.")
+                    .font(.nunito(14)).lineSpacing(6)
+                    .foregroundStyle(OB.textMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 8)
+            }
+
+            VStack(spacing: 9) {
+                summaryRow("Baby", babyName.isEmpty ? ageBand : "\(babyName) · \(ageBand)")
+                summaryRow("Your day", "\(timeLabel(startMin)) – \(timeLabel(endMin))")
+                summaryRow("Tracking", "\(trackers.count) log\(trackers.count == 1 ? "" : "s")")
+                summaryRow("Your goal", goal.isEmpty ? "Skipped" : goal)
+                summaryRow("Sharing with", caregiverName.isEmpty ? "Nobody yet" : caregiverName)
+            }
+            .padding(.top, 16)
+        }
+        .padding(.top, 22).padding(.horizontal, 24)
+    }
+
+    private func summaryRow(_ key: String, _ value: String) -> some View {
+        HStack {
+            Text(key).font(.nunito(13.5, .bold)).foregroundStyle(OB.textSecondary)
+            Spacer(minLength: 12)
+            Text(value).font(.nunito(13.5, .heavy)).foregroundStyle(OB.textPrimary)
+                .lineLimit(1).truncationMode(.tail)
+        }
+        .padding(.vertical, 13).padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(.white, in: RoundedRectangle(cornerRadius: 22))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 12, y: 4)
+    }
+
+    // MARK: - Shared building blocks
+
+    private func heading(_ title: String, _ sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.baloo(27, heavy: true)).foregroundStyle(OB.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(subtitle)
-                .font(.nunito(16))
-                .foregroundStyle(Theme.inkMuted)
+            Text(sub).font(.nunito(14)).lineSpacing(5).foregroundStyle(OB.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
     }
-}
 
-private struct FieldLabel: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text)
-            .font(.nunito(12, .bold))
-            .tracking(1.4)
-            .foregroundStyle(Theme.inkMuted)
-    }
-}
-
-private struct InputField: View {
-    let placeholder: String
-    @Binding var text: String
-    var focused: FocusState<Bool>.Binding
-    var body: some View {
-        TextField(placeholder, text: $text)
-            .font(.nunito(17, .semibold))
-            .foregroundStyle(Theme.ink)
-            .focused(focused)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text).font(.nunito(12, .heavy)).tracking(0.8)
+            .foregroundStyle(OB.textMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white, in: RoundedRectangle(cornerRadius: 24))
-            .shadow(color: Theme.cardShadow, radius: 8, y: 4)
     }
-}
 
-private struct InfoBanner: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text)
-            .font(.nunito(15, .bold))
-            .foregroundStyle(Theme.reminderText)
-            .fixedSize(horizontal: false, vertical: true)
+    private func nameCard(placeholder: String, text: Binding<String>) -> some View {
+        TextField(placeholder, text: text)
+            .font(.nunito(16, .bold)).foregroundStyle(OB.textPrimary).tint(OB.roseCTA)
+            .focused($focused)
+            .padding(.vertical, 16).padding(.horizontal, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .background(Theme.peach, in: RoundedRectangle(cornerRadius: 22))
-    }
-}
-
-// MARK: - Progress dots
-
-private struct ProgressDots: View {
-    let total: Int
-    let current: Int
-    var body: some View {
-        HStack(spacing: 7) {
-            ForEach(0..<total, id: \.self) { i in
-                Capsule()
-                    .fill(color(for: i))
-                    .frame(width: i == current ? 22 : 7, height: 7)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: current)
-            }
-        }
-    }
-    private func color(for i: Int) -> Color {
-        if i == current { return Ob.accent }
-        if i < current { return Ob.accent.opacity(0.4) }
-        return Theme.inkMuted.opacity(0.35)
-    }
-}
-
-// MARK: - Welcome feature card
-
-private struct FeatureCard: View {
-    let circle: Color
-    let title: String
-    let subtitle: String
-    var body: some View {
-        HStack(spacing: 16) {
-            Circle().fill(circle).frame(width: 54, height: 54)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.nunito(18, .bold)).foregroundStyle(Theme.ink)
-                Text(subtitle).font(.nunito(14)).foregroundStyle(Theme.inkMuted)
-            }
-            Spacer()
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity)
-        .background(.white, in: RoundedRectangle(cornerRadius: 26))
-        .shadow(color: Theme.cardShadow, radius: 10, y: 6)
-    }
-}
-
-// MARK: - Selectable pills (wrapping)
-
-private struct FlowPills: View {
-    let options: [String]
-    let selection: String
-    let onSelect: (String) -> Void
-
-    init(_ options: [String], selection: String, onSelect: @escaping (String) -> Void) {
-        self.options = options
-        self.selection = selection
-        self.onSelect = onSelect
+            .background(.white, in: RoundedRectangle(cornerRadius: 26))
+            .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
     }
 
-    var body: some View {
-        FlowLayout(spacing: 12, lineSpacing: 12) {
+    private func chips(_ options: [String], selected: String, onSelect: @escaping (String) -> Void) -> some View {
+        FlowLayout(spacing: 9, lineSpacing: 9) {
             ForEach(options, id: \.self) { opt in
-                let sel = opt == selection
+                let sel = opt == selected
                 Button { onSelect(opt) } label: {
                     Text(opt)
-                        .font(.nunito(16, .bold))
-                        .foregroundStyle(sel ? .white : Theme.inkSoft)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 15)
-                        .background(sel ? Ob.accent : .white, in: Capsule())
-                        .shadow(color: Theme.cardShadow, radius: 6, y: 3)
+                        .font(.nunito(13.5, .heavy))
+                        .foregroundStyle(sel ? .white : OB.chipIdleText)
+                        .padding(.vertical, 11).padding(.horizontal, 17)
+                        .background(sel ? OB.roseCTA : OB.chipIdle, in: Capsule())
+                        .shadow(color: Color(hex: 0x7A6248).opacity(sel ? 0 : 0.09), radius: 12, y: 4)
                 }
                 .buttonStyle(.plain)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
-}
 
-// MARK: - Tracking tile
-
-private struct TrackTile: View {
-    let title: String
-    let circle: Color
-    let selected: Bool
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Circle().fill(circle).frame(width: 32, height: 32)
-                Text(title)
-                    .font(.nunito(16, .bold))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 18)
+    private func note(_ text: String) -> some View {
+        Text(text).font(.nunito(12.5, .bold)).lineSpacing(5)
+            .foregroundStyle(OB.noteText)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.white, in: RoundedRectangle(cornerRadius: 22))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22)
-                    .stroke(Ob.accent, lineWidth: selected ? 2 : 0)
-            )
-            .shadow(color: Theme.cardShadow, radius: 7, y: 4)
+            .padding(.vertical, 14).padding(.horizontal, 16)
+            .background(OB.noteBg, in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    // MARK: - CTA
+
+    private var primaryCTA: some View {
+        Button(action: advance) {
+            Text(page == 0 ? "Let's set up" : page == lastPage ? "Open my app" : "Continue")
+                .font(.baloo(17))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(OB.roseCTA, in: Capsule())
+                .shadow(color: Color(hex: 0xBE5F78).opacity(0.42), radius: 24, y: 10)
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Logic
+
+    private func seedFromStore() {
+        babyName = babyNameStore
+        ageBand = ageBandStore
+        startMin = clampStart(dayStartHour * 60)
+        endMin = max(startMin + 120, dayEndHour * 60)
+        trackers = Set(trackersStore.split(separator: ",").map(String.init).filter { !$0.isEmpty })
+        goal = goalTitleStore
+        target = min(7, max(1, goalTargetStore))
+        caregiverName = caregiverNameStore
+        relation = caregiverRelationStore
+    }
+
+    private func clampStart(_ m: Int) -> Int { max(240, min(m, 1290)) }
+
+    private func advance() {
+        focused = false
+        if page == lastPage { finish() } else { withAnimation { page += 1 } }
+    }
+
+    private func skip() {
+        focused = false
+        hasCompletedOnboarding = true
+        onExit("You can run setup again in Settings")
+    }
+
+    private func finish() {
+        // Write through only now.
+        babyNameStore = babyName
+        ageBandStore = ageBand
+        dayStartHour = Int((Double(startMin) / 60).rounded())
+        dayEndHour = Int((Double(endMin) / 60).rounded())
+        trackersStore = trackers.sorted().joined(separator: ",")
+        goalTitleStore = goal
+        goalTargetStore = target
+        caregiverNameStore = caregiverName
+        caregiverRelationStore = relation
+
+        let trimmed = goal.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            let g = Goal(context: context)
+            g.id = UUID()
+            g.name = trimmed
+            g.icon = "#F6E6E9"
+            g.targetSessionsPerWeek = Int16(target)
+            g.createdAt = Date()
+            try? context.save()
+        }
+
+        hasCompletedOnboarding = true
+        onExit("All set — welcome, mama")
+    }
+
+    private func timeLabel(_ minutes: Int) -> String {
+        let h = (minutes / 60) % 24, m = minutes % 60
+        let date = Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: Date()) ?? Date()
+        return date.formatted(.dateTime.hour().minute())
+    }
+
+    private var onDutyLabel: String {
+        let m = endMin - startMin
+        let h = m / 60, r = m % 60
+        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
     }
 }
 
-// MARK: - Steppers
-
-private struct StepperRow: View {
-    let label: String
-    let value: String
-    let onMinus: () -> Void
-    let onPlus: () -> Void
-    var body: some View {
-        HStack {
-            Text(label).font(.nunito(18, .bold)).foregroundStyle(Theme.ink)
-            Spacer()
-            HStack(spacing: 0) {
-                stepButton("minus", onMinus)
-                Text(value)
-                    .font(.nunito(16, .bold))
-                    .foregroundStyle(Theme.ink)
-                    .frame(minWidth: 92)
-                stepButton("plus", onPlus)
-            }
-            .background(Theme.peach, in: Capsule())
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 18)
-    }
-    private func stepButton(_ symbol: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(Ob.accent)
-                .frame(width: 44, height: 44)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-private struct MiniStepper: View {
-    let onMinus: () -> Void
-    let onPlus: () -> Void
-    var body: some View {
-        HStack(spacing: 0) {
-            btn("minus", onMinus)
-            Divider().frame(height: 22)
-            btn("plus", onPlus)
-        }
-        .background(Theme.peach, in: Capsule())
-    }
-    private func btn(_ s: String, _ a: @escaping () -> Void) -> some View {
-        Button(action: a) {
-            Image(systemName: s)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(Ob.accent)
-                .frame(width: 46, height: 40)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Summary row
-
-private struct SummaryRow: View {
-    let label: String
-    let value: String
-    init(_ label: String, _ value: String) { self.label = label; self.value = value }
-    var body: some View {
-        HStack {
-            Text(label).font(.nunito(16)).foregroundStyle(Theme.inkMuted)
-            Spacer()
-            Text(value).font(.nunito(16, .bold)).foregroundStyle(Theme.ink)
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
-        .frame(maxWidth: .infinity)
-        .background(.white, in: RoundedRectangle(cornerRadius: 22))
-        .shadow(color: Theme.cardShadow, radius: 7, y: 4)
-    }
-}
-
-// MARK: - Simple flow layout for wrapping pills
+// MARK: - Reusable flow layout for wrapping chips
 
 struct FlowLayout: Layout {
     var spacing: CGFloat = 12
@@ -614,6 +519,27 @@ struct FlowLayout: Layout {
     }
 }
 
-#Preview {
-    OnboardingView()
+// MARK: - Onboarding palette
+
+private enum OB {
+    static let screenBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let textSecondary = Color(hex: 0x8A7E72)
+    static let roseCTA = Color(hex: 0xD9758C)
+    static let roseAccent = Color(hex: 0xC97B8C)
+    static let tileFill = Color(hex: 0xFBEBD8)
+    static let glyphRose = Color(hex: 0xC4788C)
+    static let chipIdle = Color.white
+    static let chipIdleText = Color(hex: 0x8A7E72)
+    static let dotActive = Color(hex: 0xD9758C)
+    static let dotPast = Color(hex: 0xEDC3CD)
+    static let dotFuture = Color(hex: 0xEFE4D8)
+    static let skipText = Color(hex: 0xA99B8C)
+    static let backIcon = Color(hex: 0x8B7F72)
+    static let fieldFill = Color(hex: 0xF4EDE4)
+    static let valueText = Color(hex: 0x6E6358)
+    static let divider = Color(hex: 0x7A6248).opacity(0.1)
+    static let noteBg = Color(hex: 0xFBEBD8)
+    static let noteText = Color(hex: 0x8A6A44)
 }

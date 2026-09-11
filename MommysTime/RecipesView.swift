@@ -9,13 +9,14 @@ struct RecipesView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Recipe.createdAt, ascending: true)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \Recipe.createdAt, ascending: false)],
         animation: .default
     )
     private var recipes: FetchedResults<Recipe>
 
     @State private var category = "Mommy"
     @State private var showingAdd = false
+    @State private var toast: String?
 
     private var filtered: [Recipe] {
         recipes.filter { ($0.category ?? "Mommy") == category }
@@ -42,6 +43,8 @@ struct RecipesView: View {
                             }
                         }
                         .padding(.top, 16)
+
+                        addOwnRow.padding(.top, 11)
                     }
                 }
                 .padding(.top, 18)
@@ -54,9 +57,44 @@ struct RecipesView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingAdd) {
-            RecipeSheet(defaultCategory: category)
+            RecipeSheet(defaultCategory: category) { savedCategory, name in
+                category = savedCategory
+                showToast("\(name) saved")
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 190)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .onAppear(perform: seedIfNeeded)
+    }
+
+    private var addOwnRow: some View {
+        Button { showingAdd = true } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "plus").font(.system(size: 12, weight: .bold))
+                Text("Add your own recipe").font(.nunito(12.5, .heavy))
+            }
+            .foregroundStyle(RC.roseText)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Color(hex: 0xC97B8C).opacity(0.45),
+                                  style: StrokeStyle(lineWidth: 2, dash: [6]))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation { toast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
     }
 
     private var header: some View {
@@ -143,11 +181,14 @@ struct RecipesView: View {
             ("Sweet potato mash", "Baby", 10, "6m+"),
             ("Banana oat fingers", "Baby", 20, "8m+"),
         ]
+        // Descending sort → assign earlier timestamps to later items so the
+        // seed array order is preserved, and any custom recipe added later
+        // (newer timestamp) lands above them all.
         let base = Date()
         for (i, item) in seed.enumerated() {
             let r = Recipe(context: context)
             r.id = UUID()
-            r.createdAt = base.addingTimeInterval(Double(i))
+            r.createdAt = base.addingTimeInterval(-Double(i))
             r.title = item.0
             r.category = item.1
             r.prepMinutes = Int32(item.2)
@@ -422,7 +463,9 @@ struct RecipeDetailView: View {
     }
 
     private func amountLabel(_ ing: RecipeIngredient) -> String {
-        guard ing.amount > 0 else { return "" }
+        // Free-text amounts with no leading number (amount 0) show as-is and
+        // don't rescale.
+        guard ing.amount > 0 else { return ing.unit }
         let scaled = ing.amount * Double(servings) / Double(max(1, content.baseYield))
         let n = (scaled * 10).rounded() / 10
         let num = n.formatted(.number.precision(.fractionLength(0...1)))
@@ -548,110 +591,343 @@ private enum RD {
     static let hintText = Color(hex: 0xA99B8C)
 }
 
+private struct IngredientDraft: Identifiable { let id = UUID(); var name = ""; var amount = "" }
+private struct StepDraft: Identifiable { let id = UUID(); var text = "" }
+
 struct RecipeSheet: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    let recipe: Recipe?
+    var defaultCategory: String = "Mommy"
+    /// Called on save with (collection, recipe name).
+    var onSaved: (String, String) -> Void = { _, _ in }
 
-    @State private var title: String
-    @State private var category: String
-    @State private var prepMinutes: Int
-    @State private var ingredients: String
-    @State private var instructions: String
-    @State private var showingDeleteConfirmation = false
+    @State private var name = ""
+    @State private var collection: String
+    @State private var minutes = 20
+    @State private var servings = 2
+    @State private var why = ""
+    @State private var ingredients: [IngredientDraft] = [IngredientDraft(), IngredientDraft()]
+    @State private var steps: [StepDraft] = [StepDraft(), StepDraft()]
+    @State private var toast: String?
+    @FocusState private var focused: Bool
 
-    init(recipe: Recipe? = nil, defaultCategory: String = "Mommy") {
-        self.recipe = recipe
-        _title = State(initialValue: recipe?.title ?? "")
-        _category = State(initialValue: recipe?.category ?? defaultCategory)
-        _prepMinutes = State(initialValue: Int(recipe?.prepMinutes ?? 0))
-        _ingredients = State(initialValue: recipe?.ingredients ?? "")
-        _instructions = State(initialValue: recipe?.instructions ?? "")
+    init(defaultCategory: String = "Mommy", onSaved: @escaping (String, String) -> Void = { _, _ in }) {
+        self.defaultCategory = defaultCategory
+        self.onSaved = onSaved
+        _collection = State(initialValue: defaultCategory)
     }
 
-    private var isEditing: Bool { recipe != nil }
+    private var isBaby: Bool { collection == "Baby" }
+    private var filledIngredients: [IngredientDraft] { ingredients.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty } }
+    private var filledSteps: [StepDraft] { steps.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && !filledIngredients.isEmpty && !filledSteps.isEmpty
+    }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Recipe") {
-                    TextField("Title (e.g. Banana purée)", text: $title)
-                    Picker("For", selection: $category) {
-                        ForEach(RecipeCategory.all, id: \.self) { Text($0).tag($0) }
-                    }
-                    HStack {
-                        Text("Prep time")
-                        Spacer()
-                        TextField("0", value: $prepMinutes, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 50)
-                        Text("min").foregroundStyle(.secondary)
-                        Stepper("", value: $prepMinutes, in: 0...240).labelsHidden()
-                    }
-                }
-                Section {
-                    TextField("One per line…", text: $ingredients, axis: .vertical)
-                        .lineLimit(4, reservesSpace: true)
-                } header: {
-                    Text("Ingredients")
-                }
-                Section("Instructions") {
-                    TextField("Steps…", text: $instructions, axis: .vertical)
-                        .lineLimit(5, reservesSpace: true)
-                }
-                if isEditing {
-                    Section {
-                        Button("Delete recipe", role: .destructive) {
-                            showingDeleteConfirmation = true
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                heroCard.padding(.top, 18)
+                sectionLabel("WHY IT HELPS").padding(.top, 18).padding(.bottom, 8)
+                whyCard
+                sectionLabel("INGREDIENTS").padding(.top, 18).padding(.bottom, 8)
+                ingredientsCard
+                addRow("+ Add ingredient") { ingredients.append(IngredientDraft()) }.padding(.top, 9)
+                sectionLabel("METHOD").padding(.top, 18).padding(.bottom, 8)
+                methodList
+                addRow("+ Add step") { steps.append(StepDraft()) }.padding(.top, 9)
+                footerNote.padding(.top, 14)
             }
-            .navigationTitle(isEditing ? "Edit Recipe" : "New Recipe")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            .confirmationDialog(
-                "Delete this recipe?",
-                isPresented: $showingDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) { deleteRecipe() }
-                Button("Cancel", role: .cancel) {}
+            .padding(.top, 18)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 176)
+        }
+        .background(NR.sheetBg)
+        .presentationDetents([.large])
+        .presentationBackground(NR.sheetBg)
+        .presentationDragIndicator(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 40)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        ZStack {
+            Text("New Recipe")
+                .font(.baloo(17, heavy: true))
+                .foregroundStyle(NR.textPrimary)
+            HStack {
+                Button { dismiss() } label: {
+                    Text("Cancel")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(NR.textSecondary)
+                        .padding(.vertical, 8).padding(.horizontal, 16)
+                        .background(.white, in: Capsule())
+                        .shadow(color: Color(hex: 0x7A6248).opacity(0.1), radius: 10, y: 3)
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Button { save() } label: {
+                    Text("Save")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(canSave ? .white : NR.disabledText)
+                        .padding(.vertical, 8).padding(.horizontal, 18)
+                        .background(canSave ? NR.accentRose : NR.disabledBg, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: Hero
+
+    private var heroCard: some View {
+        VStack(spacing: 0) {
+            TextField("Recipe name", text: $name)
+                .font(.baloo(20, heavy: true))
+                .foregroundStyle(NR.textPrimary)
+                .tint(NR.roseCTA)
+                .focused($focused)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 6) {
+                ForEach(RecipeCategory.all, id: \.self) { c in
+                    let sel = c == collection
+                    Button { collection = c } label: {
+                        Text(c)
+                            .font(.nunito(13, .heavy))
+                            .foregroundStyle(sel ? .white : NR.roseTag)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background { if sel { Capsule().fill(NR.roseCTA) } }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+            .background(.white, in: Capsule())
+            .padding(.top, 14)
+
+            HStack(spacing: 8) {
+                factCell(value: "\(minutes)", label: "minutes",
+                         onMinus: { minutes = max(5, minutes - 5) },
+                         onPlus: { minutes = min(180, minutes + 5) })
+                factCell(value: "\(servings)", label: servingsLabel,
+                         onMinus: { servings = max(1, servings - 1) },
+                         onPlus: { servings = min(12, servings + 1) })
+            }
+            .padding(.top, 12)
+        }
+        .padding(.vertical, 16).padding(.horizontal, 18)
+        .background(NR.roseFill, in: RoundedRectangle(cornerRadius: 26))
+    }
+
+    private var servingsLabel: String {
+        let word = isBaby ? "portion" : "serving"
+        return servings == 1 ? word : word + "s"
+    }
+
+    private func factCell(value: String, label: String, onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
+        VStack(spacing: 1) {
+            Text(value).font(.baloo(15, heavy: true)).foregroundStyle(NR.roseValue)
+            Text(label).font(.nunito(10.5, .bold)).foregroundStyle(NR.textMuted)
+            HStack(spacing: 6) {
+                Button(action: onMinus) {
+                    Text("−").font(.nunito(14, .heavy)).foregroundStyle(NR.textSecondary)
+                        .frame(width: 26, height: 26).background(NR.fieldFill, in: Circle())
+                }.buttonStyle(.plain)
+                Button(action: onPlus) {
+                    Text("+").font(.nunito(14, .heavy)).foregroundStyle(.white)
+                        .frame(width: 26, height: 26).background(NR.roseCTA, in: Circle())
+                }.buttonStyle(.plain)
+            }
+            .padding(.top, 7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10).padding(.horizontal, 8)
+        .background(.white, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text).font(.nunito(12, .heavy)).tracking(0.8)
+            .foregroundStyle(NR.textMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var whyCard: some View {
+        TextField("One line, for future you", text: $why)
+            .font(.nunito(14, .bold)).foregroundStyle(NR.textPrimary).tint(NR.roseCTA)
+            .focused($focused)
+            .padding(.vertical, 14).padding(.horizontal, 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white, in: RoundedRectangle(cornerRadius: 26))
+            .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+    }
+
+    // MARK: Ingredients
+
+    private var ingredientsCard: some View {
+        VStack(spacing: 0) {
+            ForEach($ingredients) { $ing in
+                HStack(spacing: 10) {
+                    TextField("Ingredient", text: $ing.name)
+                        .font(.nunito(14, .bold)).foregroundStyle(NR.textPrimary).tint(NR.roseCTA)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    TextField("Amount", text: $ing.amount)
+                        .font(.nunito(13, .heavy)).foregroundStyle(NR.textMuted).tint(NR.roseCTA)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 74)
+                    removeButton { remove(ing) }
+                }
+                .padding(.vertical, 12)
+                if ing.id != ingredients.last?.id {
+                    Rectangle().fill(NR.divider).frame(height: 1)
+                }
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 4)
+        .background(.white, in: RoundedRectangle(cornerRadius: 26))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+    }
+
+    // MARK: Method
+
+    private var methodList: some View {
+        VStack(spacing: 8) {
+            ForEach(Array($steps.enumerated()), id: \.element.id) { index, $step in
+                HStack(spacing: 11) {
+                    Text("\(index + 1)")
+                        .font(.nunito(12, .heavy)).foregroundStyle(NR.roseValue)
+                        .frame(width: 24, height: 24).background(NR.roseFill, in: Circle())
+                    TextField("What happens in this step?", text: $step.text)
+                        .font(.nunito(13.5, .bold)).foregroundStyle(NR.textPrimary).tint(NR.roseCTA)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    removeButton { removeStep(step) }
+                }
+                .padding(.vertical, 12).padding(.horizontal, 14)
+                .background(.white, in: RoundedRectangle(cornerRadius: 22))
+                .shadow(color: Color(hex: 0x7A6248).opacity(0.07), radius: 12, y: 4)
+            }
+        }
+    }
+
+    private func removeButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text("×").font(.nunito(12, .heavy)).foregroundStyle(NR.removeIcon)
+                .frame(width: 24, height: 24).background(NR.fieldFill, in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func addRow(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.nunito(12.5, .heavy)).foregroundStyle(NR.roseValue)
+                .frame(maxWidth: .infinity)
+                .padding(11)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(NR.dashBorder, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var footerNote: some View {
+        Text(noteText)
+            .font(.nunito(12.5, .bold)).lineSpacing(6)
+            .foregroundStyle(NR.noteText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 14).padding(.horizontal, 16)
+            .background(NR.noteBg, in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    private var noteText: String {
+        guard canSave else {
+            return "Give it a name, one ingredient and one step — blank lines are dropped when you save."
+        }
+        let i = filledIngredients.count, s = filledSteps.count
+        let iWord = i == 1 ? "ingredient" : "ingredients"
+        let sWord = s == 1 ? "step" : "steps"
+        return "\(i) \(iWord), \(s) \(sWord). It'll sit at the top of your \(collection.lowercased()) list."
+    }
+
+    // MARK: Actions
+
+    private func remove(_ ing: IngredientDraft) {
+        guard ingredients.count > 1 else { return }
+        ingredients.removeAll { $0.id == ing.id }
+    }
+
+    private func removeStep(_ step: StepDraft) {
+        guard steps.count > 1 else { return }
+        steps.removeAll { $0.id == step.id }
     }
 
     private func save() {
-        let target = recipe ?? Recipe(context: context)
-        if recipe == nil {
-            target.id = UUID()
-            target.createdAt = Date()
-        }
-        target.title = title.trimmingCharacters(in: .whitespaces)
-        target.category = category
-        target.prepMinutes = Int32(prepMinutes)
-        target.ingredients = ingredients
-        target.instructions = instructions
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return showToast("Name your recipe first") }
+        let ings = filledIngredients
+        guard !ings.isEmpty else { return showToast("Add at least one ingredient") }
+        let stps = filledSteps
+        guard !stps.isEmpty else { return showToast("Add at least one step") }
+
+        let r = Recipe(context: context)
+        r.id = UUID()
+        r.createdAt = Date()
+        r.title = trimmedName
+        r.category = collection
+        r.prepMinutes = Int32(minutes)
+        r.servings = Int32(servings)
+        r.tag = "\(servings) \(servingsLabel)"
+        r.why = why.trimmingCharacters(in: .whitespaces)
+        r.ingredients = ings
+            .map { "\($0.name.trimmingCharacters(in: .whitespaces));;\($0.amount.trimmingCharacters(in: .whitespaces))" }
+            .joined(separator: "\n")
+        r.instructions = stps
+            .map { $0.text.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: "\n")
         try? context.save()
+        onSaved(collection, trimmedName)
         dismiss()
     }
 
-    private func deleteRecipe() {
-        if let recipe {
-            context.delete(recipe)
-            try? context.save()
+    private func showToast(_ message: String) {
+        focused = false
+        withAnimation { toast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { toast = nil }
         }
-        dismiss()
     }
+}
+
+// MARK: - New Recipe palette
+
+private enum NR {
+    static let sheetBg = Color(hex: 0xFFF8EE)
+    static let textPrimary = Color(hex: 0x4A423B)
+    static let textSecondary = Color(hex: 0x8A7E72)
+    static let textMuted = Color(hex: 0x9A8D80)
+    static let roseFill = Color(hex: 0xF6E6E9)
+    static let roseTag = Color(hex: 0xB0899A)
+    static let roseValue = Color(hex: 0xC4788C)
+    static let roseCTA = Color(hex: 0xD9758C)
+    static let accentRose = Color(hex: 0xD98FA0)
+    static let dashBorder = Color(hex: 0xC97B8C).opacity(0.45)
+    static let fieldFill = Color(hex: 0xF4EDE4)
+    static let divider = Color(hex: 0x7A6248).opacity(0.1)
+    static let removeIcon = Color(hex: 0xB7AA9B)
+    static let noteBg = Color(hex: 0xFBEBD8)
+    static let noteText = Color(hex: 0x8A6A44)
+    static let disabledBg = Color(hex: 0xF0E7DC)
+    static let disabledText = Color(hex: 0xB7AA9B)
 }

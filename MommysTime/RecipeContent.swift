@@ -32,28 +32,65 @@ struct RecipeContent {
         return fallback(for: recipe)
     }
 
-    /// Builds a best-effort content object from a user-created recipe's
-    /// freeform fields (no amounts, so ingredients render as plain rows).
+    /// Builds content from a user-created recipe. Ingredients are stored one per
+    /// line as "name;;amount" (amount is free text); the leading number is
+    /// parsed off for rescaling and the remainder treated as the unit.
     private static func fallback(for recipe: Recipe) -> RecipeContent {
+        let category = recipe.category ?? "Mommy"
+        let isBaby = category == "Baby"
+        let serves = max(1, Int(recipe.servings))
+        let yieldUnit = isBaby ? "portion" : "serving"
+
         let ingredients = (recipe.ingredients ?? "")
+            .split(separator: "\n").map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            .map { line -> RecipeIngredient in
+                let parts = line.components(separatedBy: ";;")
+                let name = parts[0].trimmingCharacters(in: .whitespaces)
+                let amountText = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespaces) : ""
+                let (amount, unit) = parseAmount(amountText)
+                return RecipeIngredient(name: name, amount: amount, unit: unit)
+            }
+
+        let steps = (recipe.instructions ?? "")
             .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-            .map { RecipeIngredient(name: $0, amount: 0, unit: "") }
-        let steps = (recipe.instructions ?? "")
-            .split(whereSeparator: { $0 == "\n" })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        var facts: [(String, String)] = []
-        if recipe.prepMinutes > 0 { facts.append(("\(recipe.prepMinutes)", "minutes")) }
+
+        let servesLabel = isBaby ? "portion" : "serving"
+        var facts: [(String, String)] = [("\(recipe.prepMinutes)", "minutes"),
+                                         ("\(serves)", serves == 1 ? servesLabel : servesLabel + "s")]
+        let count = ingredients.count
+        facts.append(("\(count)", count == 1 ? "item" : "items"))
+
+        let why = (recipe.why?.isEmpty == false)
+            ? recipe.why!
+            : "Your own recipe — saved so you never have to remember it again."
+
         return RecipeContent(
-            tag: (recipe.category ?? "Recipe").uppercased(),
+            tag: "YOUR RECIPE · \(category.uppercased())",
             facts: facts,
-            why: "",
-            baseYield: 1,
-            yieldUnit: "serving",
+            why: why,
+            baseYield: serves,
+            yieldUnit: yieldUnit,
             ingredients: ingredients,
             steps: steps
         )
+    }
+
+    /// Splits a free-text amount into a numeric part (for rescaling) and a unit.
+    /// "60 g" → (60, "g") · "2 tbsp" → (2, "tbsp") · "a handful" → (0, "a handful").
+    static func parseAmount(_ text: String) -> (Double, String) {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return (0, "") }
+        var numberPart = ""
+        var rest = trimmed
+        for ch in trimmed {
+            if ch.isNumber || ch == "." { numberPart.append(ch); rest.removeFirst() } else { break }
+        }
+        if let n = Double(numberPart) {
+            return (n, rest.trimmingCharacters(in: .whitespaces))
+        }
+        return (0, trimmed)   // no leading number → unchanged across servings
     }
 
     static let library: [String: RecipeContent] = [
