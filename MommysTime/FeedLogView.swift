@@ -22,6 +22,8 @@ struct FeedLogView: View {
         feeds.filter { Calendar.current.isDateInToday($0.date ?? .distantPast) }
     }
 
+    @AppStorage(SettingsKeys.feedIntervalHours) private var intervalHours = 3
+
     /// ml today sums bottle volumes only — breast/solid contribute 0.
     private var todayML: Int {
         todayFeeds.filter { $0.type == "Bottle" }.reduce(0) { $0 + Int($1.amountML) }
@@ -33,28 +35,25 @@ struct FeedLogView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     heroCard
+                    statsCard.padding(.top, 10)
 
-                    if feeds.isEmpty {
-                        emptyState
-                    } else {
-                        Text("HISTORY")
-                            .font(.nunito(12, .heavy)).tracking(0.8)
-                            .foregroundStyle(FL.textMuted)
-                            .padding(.top, 16).padding(.bottom, 8)
-                        VStack(spacing: 9) {
-                            ForEach(feeds, id: \.objectID) { feed in
-                                FeedRow(feed: feed) { editing = feed }
-                                    .contextMenu {
-                                        Button("Edit") { editing = feed }
-                                        Button("Delete", role: .destructive) { delete(feed) }
-                                    }
-                            }
-                        }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("How feeding is going")
+                            .font(.baloo(19, heavy: true))
+                            .foregroundStyle(Theme.ink)
+                        Text("A week at a glance — fed is fed.")
+                            .font(.nunito(12.5, .semibold))
+                            .foregroundStyle(Theme.inkFaint)
                     }
+                    .padding(.top, 16)
+                    .padding(.horizontal, 2)
+
+                    WeeklyBarChart(title: "ML FED · LAST 7 DAYS", values: weekVolumes, tint: FL.greenAccent)
+                        .padding(.top, 14)
                 }
                 .padding(.top, 18)
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 120)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -66,7 +65,7 @@ struct FeedLogView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -80,26 +79,8 @@ struct FeedLogView: View {
     }
 
     private var header: some View {
-        ZStack {
-            Text("Feed Log")
-                .font(.baloo(19, heavy: true))
-                .foregroundStyle(FL.textPrimary)
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(FL.backIcon)
-                        .frame(width: 38, height: 38)
-                        .background(.white, in: Circle())
-                        .shadow(color: Color(hex: 0x7A6248).opacity(0.12), radius: 10, y: 3)
-                }
-                .buttonStyle(.plain)
-                Spacer()
-                Color.clear.frame(width: 38, height: 38)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 8)
+        DetailHeader(title: "Feed Log") { dismiss() }
+            .padding(.top, 8)
     }
 
     private var heroCard: some View {
@@ -119,13 +100,24 @@ struct FeedLogView: View {
                 .foregroundStyle(FL.greenDeep)
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: 0) {
-                statColumn(value: "\(todayFeeds.count)", label: "feeds today")
-                Rectangle().fill(FL.divider).frame(width: 1)
-                statColumn(value: "\(todayML)", label: "ml today")
+            HStack(spacing: 6) {
+                Text("Feed every")
+                    .font(.nunito(13, .bold))
+                    .foregroundStyle(FL.greenMid)
+                Menu {
+                    ForEach(1...6, id: \.self) { hours in
+                        Button("\(hours) hour\(hours == 1 ? "" : "s")") { intervalHours = hours }
+                    }
+                } label: {
+                    Text("\(intervalHours)h")
+                        .font(.nunito(13, .heavy))
+                        .foregroundStyle(Theme.roseAccentText)
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 9)
+                        .background(.white, in: Capsule())
+                }
             }
-            .padding(.top, 12)
-            .padding(.bottom, 4)
+            .padding(.top, 4)
 
             Button { showingAdd = true } label: {
                 HStack(spacing: 8) {
@@ -146,27 +138,86 @@ struct FeedLogView: View {
         .background(FL.greenFill, in: RoundedRectangle(cornerRadius: 28))
     }
 
-    private func statColumn(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.baloo(22, heavy: true)).foregroundStyle(FL.greenAccent)
-            Text(label).font(.nunito(11.5, .bold)).foregroundStyle(FL.greenMid)
+    private var statsCard: some View {
+        HStack(spacing: 0) {
+            // Tapping the count opens the day-by-day history.
+            NavigationLink {
+                LogHistoryView(
+                    title: "Feed History",
+                    entries: historyRows,
+                    summary: daySummary,
+                    onSelect: { id in editing = feeds.first { $0.objectID == id } },
+                    onDelete: { id in feeds.first { $0.objectID == id }.map(delete) }
+                )
+            } label: {
+                statColumn(value: "\(todayFeeds.count)", label: "feeds today", linked: true)
+            }
+            .buttonStyle(.plain)
+            Rectangle().fill(FL.divider).frame(width: 1)
+            statColumn(value: "\(todayML)", label: "ml today")
         }
-        .frame(maxWidth: .infinity)
+        .padding(12)
+        .background(.white, in: RoundedRectangle(cornerRadius: 24))
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 6) {
-            Text("Track every feed")
-                .font(.baloo(18, heavy: true))
-                .foregroundStyle(FL.textPrimary)
-            Text("Log breast, bottle and solid feeds to spot your baby's rhythm.")
-                .font(.nunito(14))
-                .foregroundStyle(FL.textMuted)
-                .multilineTextAlignment(.center)
+    private func statColumn(value: String, label: String, linked: Bool = false) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.baloo(22, heavy: true)).foregroundStyle(FL.greenAccent)
+            HStack(spacing: 5) {
+                Text(label).font(.nunito(11.5, .bold)).foregroundStyle(FL.textMuted)
+                if linked {
+                    Image("icon-history")
+                        .renderingMode(.original)
+                        .resizable().scaledToFit()
+                        .frame(width: 13, height: 13)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 30)
-        .padding(.horizontal, 20)
+        .contentShape(Rectangle())
+    }
+
+    /// Bottle millilitres per day for the last seven days, oldest first.
+    private var weekVolumes: [Int] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return (0..<7).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
+            return feeds
+                .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+                .reduce(0) { $0 + Int($1.amountML) }
+        }
+    }
+
+    private var historyRows: [HistoryRow] {
+        feeds.map { feed in
+            HistoryRow(
+                id: feed.objectID,
+                time: feed.date ?? .distantPast,
+                title: feed.type ?? "Feed",
+                detail: detailLabel(feed)
+            )
+        }
+    }
+
+    /// Bottles read in ml, breast feeds in minutes and side, solids in grams.
+    private func detailLabel(_ feed: FeedSession) -> String {
+        if feed.amountML > 0 { return "\(feed.amountML) ml" }
+        if feed.durationMinutes > 0 {
+            let side = feed.side ?? ""
+            let mins = "\(feed.durationMinutes) min"
+            return side.isEmpty ? mins : "\(mins) · \(side)"
+        }
+        return "—"
+    }
+
+    private func daySummary(_ day: Date) -> String {
+        let list = feeds.filter { Calendar.current.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+        guard !list.isEmpty else { return "no entries" }
+        let ml = list.reduce(0) { $0 + Int($1.amountML) }
+        let count = "\(list.count) \(list.count == 1 ? "FEED" : "FEEDS")"
+        return ml > 0 ? "\(count) · \(ml) ML" : count
     }
 
     private func delete(_ feed: FeedSession) {
@@ -184,66 +235,20 @@ struct FeedLogView: View {
     }
 }
 
-private struct FeedRow: View {
-    @ObservedObject var feed: FeedSession
-    var onTap: () -> Void
-
-    private var kindLine: String {
-        let type = feed.type ?? "Feed"
-        let time = (feed.date ?? Date()).formatted(.dateTime.weekday(.abbreviated).hour().minute())
-        return "\(type) · \(time)"
-    }
-
-    private var detailLine: String {
-        let pumped = (feed.notes ?? "").contains("pumped")
-        let leftSome = feed.finished ? "" : " · left some"
-        switch feed.type {
-        case "Bottle":
-            guard feed.amountML > 0 else { return feed.finished ? "—" : "left some" }
-            return "\(feed.amountML) ml" + (pumped ? " (pumped)" : "") + leftSome
-        case "Breast":
-            var parts: [String] = []
-            if feed.durationMinutes > 0 { parts.append("\(feed.durationMinutes) min") }
-            if let side = feed.side, !side.isEmpty { parts.append(side) }
-            return parts.isEmpty ? (feed.finished ? "—" : "left some") : parts.joined(separator: " · ") + leftSome
-        case "Solid":
-            guard feed.amountML > 0 else { return feed.finished ? "—" : "left some" }
-            return "\(feed.amountML) g" + leftSome
-        default:
-            return "—"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(kindLine)
-                .font(.nunito(14.5, .heavy))
-                .foregroundStyle(FL.textPrimary)
-            Text(detailLine)
-                .font(.nunito(12, .semibold))
-                .foregroundStyle(FL.textMuted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .background(FL.greenRow, in: RoundedRectangle(cornerRadius: 20))
-        .contentShape(RoundedRectangle(cornerRadius: 20))
-        .onTapGesture(perform: onTap)
-    }
-}
-
 // MARK: - Feed log palette
 
 private enum FL {
     static let screenBg = Color(hex: 0xFFF8EE)
     static let textPrimary = Color(hex: 0x4A423B)
     static let textMuted = Color(hex: 0x9A8D80)
-    static let greenFill = Color(hex: 0xDCEDE6)
-    static let greenRow = Color(hex: 0xE6F2ED)
-    static let greenDeep = Color(hex: 0x38604F)
-    static let greenMid = Color(hex: 0x7E9A8F)
-    static let greenAccent = Color(hex: 0x4E9E86)
-    static let divider = Color(hex: 0x4E9E86).opacity(0.25)
+    // The design's rose scale — these kept their old `green*` names so every
+    // call site below stays put.
+    static let greenFill = Color(hex: 0xF6E6E9)
+    static let greenRow = Color(hex: 0xF9EDEF)
+    static let greenDeep = Color(hex: 0x7E3B50)
+    static let greenMid = Color(hex: 0xB0899A)
+    static let greenAccent = Color(hex: 0xD9758C)
+    static let divider = Color(hex: 0x7A6248).opacity(0.12)
     static let backIcon = Color(hex: 0x8B7F72)
 }
 
@@ -409,7 +414,7 @@ struct FeedSheet: View {
                 Button { stepMetric(-1) } label: {
                     Text("−").font(.nunito(20, .heavy)).foregroundStyle(LF.greenMid)
                         .frame(width: 46, height: 46).background(.white, in: Circle())
-                        .shadow(color: Color(hex: 0x38604F).opacity(0.12), radius: 12, y: 4)
+                        .shadow(color: Color(hex: 0xBE5F78).opacity(0.12), radius: 12, y: 4)
                 }
                 .buttonStyle(.plain)
                 Text(stepCaption)
@@ -519,15 +524,15 @@ private enum LF {
     static let textPrimary = Color(hex: 0x4A423B)
     static let textSecondary = Color(hex: 0x8A7E72)
     static let textMuted = Color(hex: 0x9A8D80)
-    static let greenFill = Color(hex: 0xDCEDE6)
-    static let greenNote = Color(hex: 0xE6F2ED)
-    static let greenDeep = Color(hex: 0x38604F)
-    static let greenMid = Color(hex: 0x7E9A8F)
-    static let greenAccent = Color(hex: 0x4E9E86)
-    static let greenText = Color(hex: 0x3E7A66)
+    static let greenFill = Color(hex: 0xF9EDEF)
+    static let greenNote = Color(hex: 0xF9EDEF)
+    static let greenDeep = Color(hex: 0x7E3B50)
+    static let greenMid = Color(hex: 0xB0899A)
+    static let greenAccent = Color(hex: 0xD9758C)
+    static let greenText = Color(hex: 0xA85F6F)
     static let fieldFill = Color(hex: 0xF4EDE4)
     static let valueText = Color(hex: 0x6E6358)
     static let accentRose = Color(hex: 0xD98FA0)
     static let toggleOff = Color(hex: 0xE7DFD4)
-    static let toggleOn = Color(hex: 0x7FBFAE)
+    static let toggleOn = Color(hex: 0xD98FA0)
 }

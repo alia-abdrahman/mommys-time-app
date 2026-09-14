@@ -9,6 +9,7 @@ struct AddBlockSheet: View {
     @State private var start: Date
     @State private var lengthMinutes = 60
     @State private var repeatsDaily = false
+    @State private var repeatsUntil: Date
     @State private var showTimePicker = false
     @State private var titleToast = false
 
@@ -26,6 +27,9 @@ struct AddBlockSheet: View {
             bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day
         ) ?? day
         _start = State(initialValue: base)
+        // A week of repeats is the useful default — long enough to be worth
+        // ticking, short enough that nobody has to clean it up later.
+        _repeatsUntil = State(initialValue: calendar.date(byAdding: .day, value: 6, to: day) ?? day)
     }
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -38,9 +42,11 @@ struct AddBlockSheet: View {
                 chipRow
                 sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
                 detailsCard
+                if repeatsDaily { recurNote.padding(.top, 10) }
             }
             .padding(.top, 18)
             .padding(.horizontal, 18)
+            .padding(.bottom, 24)
         }
         .background(AB.sheetBg)
         .presentationDetents([.large])
@@ -162,18 +168,93 @@ struct AddBlockSheet: View {
 
             rowDivider
 
-            // Row 4 — Repeats every day
-            HStack {
-                Text("Repeats every day").font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
-                Spacer()
-                toggle
+            // Row 4 — Recurring
+            Button { withAnimation(.easeOut(duration: 0.18)) { repeatsDaily.toggle() } } label: {
+                HStack(spacing: 11) {
+                    checkbox
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Recurring").font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
+                        Text("Repeat this every day")
+                            .font(.nunito(11.5, .semibold))
+                            .foregroundStyle(AB.textMuted)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 14)
+            .buttonStyle(.plain)
+
+            // Row 5 — how long it keeps repeating
+            if repeatsDaily {
+                rowDivider
+                HStack {
+                    Text("Ends on").font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Button { shiftEnd(-1) } label: {
+                            Text("−").font(.nunito(16, .heavy)).foregroundStyle(AB.textSecondary)
+                                .frame(width: 36, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                        Text(repeatsUntil.formatted(.dateTime.day().month(.abbreviated)))
+                            .font(.nunito(13, .heavy))
+                            .foregroundStyle(AB.valueText)
+                            .frame(minWidth: 96)
+                        Button { shiftEnd(1) } label: {
+                            Text("+").font(.nunito(16, .heavy)).foregroundStyle(AB.accentPlus)
+                                .frame(width: 36, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .background(AB.fieldFill, in: Capsule())
+                }
+                .padding(.vertical, 12)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 4)
         .background(AB.cardWhite, in: RoundedRectangle(cornerRadius: 26))
         .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+    }
+
+    /// Days from the block's own day up to and including the end date.
+    private var recurDays: Int {
+        let calendar = Calendar.current
+        let from = calendar.startOfDay(for: day)
+        let to = calendar.startOfDay(for: repeatsUntil)
+        return (calendar.dateComponents([.day], from: from, to: to).day ?? 0) + 1
+    }
+
+    private var recurNote: some View {
+        Text("Repeats on \(recurDays) day\(recurDays == 1 ? "" : "s") — today through \(repeatsUntil.formatted(.dateTime.day().month(.abbreviated))). Change the end date any time.")
+            .font(.nunito(11.5, .semibold))
+            .lineSpacing(4)
+            .foregroundStyle(AB.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func shiftEnd(_ direction: Int) {
+        let calendar = Calendar.current
+        guard let next = calendar.date(byAdding: .day, value: direction, to: repeatsUntil) else { return }
+        // Never before the block's own day — a block can't stop repeating
+        // before it starts.
+        guard calendar.startOfDay(for: next) >= calendar.startOfDay(for: day) else { return }
+        repeatsUntil = next
+    }
+
+    private var checkbox: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(repeatsDaily ? AB.toggleOn : AB.fieldFill)
+            .frame(width: 22, height: 22)
+            .overlay {
+                if repeatsDaily {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white)
+                }
+            }
     }
 
     private var rowDivider: some View {
@@ -198,21 +279,6 @@ struct AddBlockSheet: View {
             .buttonStyle(.plain)
         }
         .background(AB.fieldFill, in: Capsule())
-    }
-
-    private var toggle: some View {
-        Button { repeatsDaily.toggle() } label: {
-            ZStack(alignment: repeatsDaily ? .trailing : .leading) {
-                Capsule().fill(repeatsDaily ? AB.toggleOn : AB.toggleOff)
-                    .frame(width: 50, height: 30)
-                Circle().fill(.white)
-                    .frame(width: 24, height: 24)
-                    .shadow(color: .black.opacity(0.15), radius: 2.5, y: 2)
-                    .padding(3)
-            }
-        }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: repeatsDaily)
     }
 
     private var timePickerSheet: some View {
@@ -260,8 +326,10 @@ struct AddBlockSheet: View {
         block.startTime = start
         block.endTime = start.addingTimeInterval(Double(lengthMinutes) * 60)
         block.repeatsDaily = repeatsDaily
+        block.repeatsUntil = repeatsDaily ? repeatsUntil : nil
         try? context.save()
-        onSaved(repeatsDaily ? "Added to every day this week" : "\(trimmed) added")
+        onSaved(repeatsDaily ? "Added to every day until \(repeatsUntil.formatted(.dateTime.day().month(.abbreviated)))"
+                             : "\(trimmed) added")
         dismiss()
     }
 }
@@ -293,17 +361,17 @@ private enum AB {
     static let accentPlus = Color(hex: 0xC97B8C)
     static let fieldFill = Color(hex: 0xF4EDE4)
     static let divider = Color(hex: 0x7A6248).opacity(0.1)
-    static let chipIdle = Color(hex: 0xEFE8F1)
+    static let chipIdle = Color(hex: 0xF9EDEF)
     static let toggleOff = Color(hex: 0xE7DFD4)
-    static let toggleOn = Color(hex: 0x7FBFAE)
+    static let toggleOn = Color(hex: 0xD98FA0)
     static let disabledBg = Color(hex: 0xF0E7DC)
     static let disabledText = Color(hex: 0xB7AA9B)
     static let valueText = Color(hex: 0x6E6358)
 
     // Chip category label colours
-    static let kids = Color(hex: 0x7C77B5)
+    static let kids = Color(hex: 0xC4788C)
     static let chores = Color(hex: 0xB98B58)
-    static let baby = Color(hex: 0x4E9E86)
+    static let baby = Color(hex: 0xD9758C)
 
     struct Chip: Identifiable {
         let title: String

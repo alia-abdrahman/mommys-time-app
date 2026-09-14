@@ -1,20 +1,16 @@
 import SwiftUI
 import CoreData
 
-/// Tab indices, shared with ContentView's TabView tags so the home menu can
-/// jump straight to a feature.
-enum AppTab {
-    static let home = 0
-    static let schedule = 1
-    static let goals = 2
-    static let progress = 3
-    static let settings = 4
+/// Everything reachable by pushing from Home.
+enum HomeDestination: Hashable {
+    case schedule, appointment, inventory, pump, feed, growth, wake, recipes, spending, sync
 }
 
 struct HomeView: View {
-    @Binding var selectedTab: Int
+    var onToast: (String) -> Void = { _ in }
 
     @Environment(\.managedObjectContext) private var context
+
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \ScheduleBlock.startTime, ascending: true)],
         animation: .default
@@ -36,76 +32,64 @@ struct HomeView: View {
     @AppStorage(SettingsKeys.pumpIntervalHours) private var pumpIntervalHours = 3
     @AppStorage(SettingsKeys.isPremium) private var isPremium = false
 
+    @ObservedObject private var noise = SootheNoise.shared
+
+    @State private var path = NavigationPath()
     @State private var showingNotifications = false
     @State private var showingPaywall = false
-    @State private var toast: String?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+        NavigationStack(path: $path) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
                     header
-                    banner
-                    reminderCard
-                    menuSection
+                    tipCard.padding(.top, 10)
+                    reminderPill.padding(.top, 8)
+                    Text("What would you like to do today?")
+                        .font(.baloo(19))
+                        .foregroundStyle(Theme.ink)
+                        .padding(.top, 14)
+                    tileGrid.padding(.top, 10)
+                    sootheButton.padding(.top, 20)
                 }
                 .padding(.horizontal, 22)
-                .padding(.top, 8)
-
-                // The premium section sits on top of the illustration, so the
-                // sky and sun show around and behind the premium tiles.
-                ZStack(alignment: .top) {
-                    backgroundIllustration
-                    premiumSection
-                        .padding(.horizontal, 22)
-                        .padding(.top, 18)
-                }
+                .padding(.bottom, 116)
             }
             .background(Theme.canvas.ignoresSafeArea())
             .navigationBarHidden(true)
-            .sheet(isPresented: $showingNotifications) {
-                NotificationsView()
-            }
-            .sheet(isPresented: $showingPaywall) {
-                PremiumPaywallView { showToast($0) }
-            }
-            .overlay(alignment: .bottom) {
-                if let toast {
-                    Toast(text: toast)
-                        .padding(.bottom, 190)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
+            .navigationDestination(for: HomeDestination.self, destination: destination)
+            .sheet(isPresented: $showingNotifications) { NotificationsSheet() }
+            .sheet(isPresented: $showingPaywall) { PremiumPaywallView(onToast: onToast) }
         }
         .tint(Theme.rose)
     }
 
-    /// Soft mother-and-baby illustration that sits at the very bottom of the
-    /// scrolling home page. It fills the width and is shown in full (uncropped)
-    /// so scrolling to the bottom reveals the whole scene, and the scroll ends
-    /// exactly at the bottom edge of the illustration — no empty space below.
-    /// Its cream sky is the exact same colour as `Theme.canvas`, so the top edge
-    /// is pixel-identical to the background above it — there is no visible line
-    /// where the two meet.
-    private var backgroundIllustration: some View {
-        Image("HomeIllustration")
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 70)
+    @ViewBuilder
+    private func destination(_ dest: HomeDestination) -> some View {
+        switch dest {
+        case .schedule:    TodayView()
+        case .appointment: AppointmentsView()
+        case .inventory:   InventoryView()
+        case .pump:        PumpTrackerView()
+        case .feed:        FeedLogView()
+        case .growth:      GrowthLogView()
+        case .wake:        WakeWindowView()
+        case .recipes:     RecipesView()
+        case .spending:    MySpendingView()
+        case .sync:        SyncToCloudView()
+        }
     }
 
-    // MARK: 1 & 2 — Greeting + notification
+    // MARK: Greeting + notification bell
 
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(greeting)
                     .font(.nunito(13, .bold))
-                    .tracking(0.3)
                     .foregroundStyle(Theme.inkMuted)
                 Text("Hello, mama")
-                    .font(.baloo(30, heavy: true))
+                    .font(.baloo(32))
                     .foregroundStyle(Theme.ink)
             }
             Spacer()
@@ -114,20 +98,20 @@ struct HomeView: View {
                     .renderingMode(.original)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 20, height: 21)
+                    .frame(width: 19, height: 20)
                     .frame(width: 44, height: 44)
                     .background(Color.white, in: Circle())
                     .overlay(alignment: .topTrailing) {
-                        Circle().fill(Theme.rose)
+                        Circle().fill(Color(hex: 0xD97F92))
                             .frame(width: 9, height: 9)
                             .overlay(Circle().stroke(.white, lineWidth: 2))
-                            .offset(x: -5, y: 5)
+                            .offset(x: -8, y: 6)
                     }
-                    .shadow(color: Theme.cardShadow, radius: 7, y: 4)
+                    .shadow(color: Color(hex: 0x7A6248).opacity(0.14), radius: 7, y: 4)
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 52)
+        .padding(.top, 8)
     }
 
     private var greeting: String {
@@ -138,36 +122,35 @@ struct HomeView: View {
         }
     }
 
-    private func showToast(_ message: String) {
-        withAnimation { toast = message }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            withAnimation { toast = nil }
-        }
-    }
+    // MARK: Tip of the day
 
-    // MARK: 3 — Banner (tip of the day)
-
-    private var banner: some View {
-        VStack(alignment: .leading, spacing: 7) {
+    private var tipCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Circle().fill(Theme.tipIconBg)
-                    .frame(width: 20, height: 20)
-                    .overlay(Circle().fill(Theme.tipIconDot).frame(width: 7, height: 7))
+                Image("tip-bulb")
+                    .renderingMode(.original)
+                    .resizable().scaledToFit()
+                    .frame(width: 18, height: 18)
                 Text("TIP OF THE DAY")
-                    .font(.nunito(11, .bold))
+                    .font(.nunito(13, .heavy))
                     .tracking(1.1)
                     .foregroundStyle(Theme.tipLabel)
             }
             Text(tipOfTheDay)
-                .font(.nunito(16, .bold))
+                .font(.nunito(17.5, .bold))
+                .lineSpacing(4)
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18)
-        .padding(.vertical, 14)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
-        .shadow(color: Theme.cardShadow, radius: 10, y: 6)
+        .padding(.vertical, 12)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.10), radius: 9, y: 6)
     }
 
     private var tipOfTheDay: String {
@@ -185,143 +168,129 @@ struct HomeView: View {
         "Celebrate the tiny wins. You're doing more than you think.",
     ]
 
-    // MARK: 4 — Reminder
+    // MARK: Next-up reminder
 
-    private var reminderCard: some View {
-        HStack(spacing: 11) {
-            Circle().fill(Theme.reminderIconBg)
-                .frame(width: 28, height: 28)
-                .overlay(
-                    Image(systemName: "clock")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color(hex: 0xB07F4E))
-                )
-            Text(reminderText)
-                .font(.nunito(14, .bold))
-                .foregroundStyle(Theme.reminderText)
-            Spacer()
+    private var reminderPill: some View {
+        Button { path.append(HomeDestination.pump) } label: {
+            HStack(spacing: 11) {
+                Image("reminder-alert")
+                    .renderingMode(.original)
+                    .resizable().scaledToFit()
+                    .frame(width: 22, height: 22)
+                reminderText
+                    .font(.nunito(16, .bold))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.peach, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Theme.peachBorder, lineWidth: 2)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.reminderBg, in: RoundedRectangle(cornerRadius: 22))
+        .buttonStyle(.plain)
     }
 
-    private var reminderText: String {
+    /// "Next: Pump session in **1h 11m**" — the countdown carries the darker ink.
+    private var reminderText: Text {
         guard let next = nextEvent else {
-            return "Nothing else scheduled today — enjoy the calm."
+            return Text("Nothing else scheduled today — enjoy the calm.")
+                .foregroundColor(Theme.reminderText)
         }
-        return "Next: \(next.title) \(timeUntil(next.date))"
+        return Text("Next: \(next.title) ").foregroundColor(Theme.reminderText)
+            + Text(timeUntil(next.date)).foregroundColor(Theme.reminderStrong)
     }
 
+    /// Minutes up to an hour, hours up to a day, then days — "in 36h 16m" is a
+    /// number you have to do arithmetic on; "in 1d 12h" isn't.
     private func timeUntil(_ date: Date) -> String {
         let minutes = max(0, Int(date.timeIntervalSinceNow / 60))
         if minutes < 1 { return "now" }
         if minutes < 60 { return "in \(minutes) min" }
+
         let hours = minutes / 60
-        let remainder = minutes % 60
-        return remainder == 0 ? "in \(hours) hour\(hours == 1 ? "" : "s")" : "in \(hours)h \(remainder)m"
+        if hours < 24 {
+            let remainder = minutes % 60
+            return remainder == 0 ? "in \(hours)h" : "in \(hours)h \(remainder)m"
+        }
+
+        let days = hours / 24
+        let remainder = hours % 24
+        return remainder == 0 ? "in \(days)d" : "in \(days)d \(remainder)h"
     }
 
-    // MARK: 5 — Menu
+    // MARK: Menu grid
 
-    private var menuSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            sectionHeading("Menu")
-            LazyVGrid(columns: columns, spacing: 18) {
-                Button { selectedTab = AppTab.schedule } label: {
-                    TileLabel(title: "Schedule Builder", asset: "schedule-builder", icon: Theme.tileGlyph, bg: Theme.peach)
-                }
-                .buttonStyle(.plain)
-
-                NavigationLink {
-                    AppointmentsView()
-                } label: {
-                    TileLabel(title: "Appointment", asset: "appointment", icon: Theme.tileGlyph, bg: Theme.peach)
-                }
-
-                NavigationLink {
-                    InventoryView()
-                } label: {
-                    TileLabel(title: "Inventory", asset: "inventory", icon: Theme.tileGlyph, bg: Theme.peach)
-                }
-
-                NavigationLink {
-                    PumpTrackerView()
-                } label: {
-                    TileLabel(title: "Pump Tracker", asset: "pump-tracker", icon: Theme.tileGlyph, bg: Theme.peach)
-                }
-
-                NavigationLink {
-                    FeedLogView()
-                } label: {
-                    TileLabel(title: "Feed Log", asset: "feed-log", icon: Theme.tileGlyph, bg: Theme.peach)
-                }
-
-                NavigationLink {
-                    GrowthLogView()
-                } label: {
-                    TileLabel(title: "Growth Log", asset: "growth-log", icon: Theme.tileGlyph, bg: Theme.peach)
-                }
-            }
+    private var tileGrid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 12) {
+            tile("Daily Task", "schedule-builder") { path.append(HomeDestination.schedule) }
+            tile("Appointment", "appointment") { path.append(HomeDestination.appointment) }
+            tile("Inventory", "inventory") { path.append(HomeDestination.inventory) }
+            tile("Pump Tracker", "pump-tracker") { path.append(HomeDestination.pump) }
+            tile("Feed Log", "feed-log") { path.append(HomeDestination.feed) }
+            tile("Growth Log", "growth-log") { path.append(HomeDestination.growth) }
+            tile("Wake Window", "wake-window", premium: true) { path.append(HomeDestination.wake) }
+            tile("Recipes", "recipes", premium: true) { path.append(HomeDestination.recipes) }
+            tile("My Spending", "my-spending", premium: true) { path.append(HomeDestination.spending) }
         }
     }
 
-    // MARK: 6 — Premium features
+    // MARK: Soothing sounds
 
-    private var premiumSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                sectionHeading("Premium")
-                Spacer()
-                Button {
-                    if isPremium { showToast("You're already Premium, mama") }
-                    else { showingPaywall = true }
-                } label: {
-                    Text(isPremium ? "Premium" : "Unlock all")
-                        .font(.nunito(11, .bold))
-                        .foregroundStyle(Theme.roseText)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 5)
-                        .background(Theme.rosePillBg, in: Capsule())
+    /// White noise, a tap away from wherever she is in the app. The blush card
+    /// stays put while it plays — only the disc and the pill flip, so the row
+    /// doesn't shout when the room has finally gone quiet.
+    private var sootheButton: some View {
+        let on = noise.isPlaying
+        return Button { noise.toggle() } label: {
+            HStack(spacing: 13) {
+                SootheDisc(playing: on)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(on ? "Calming noise is playing" : "Baby won't settle?")
+                        .font(.nunito(15.5, .heavy))
+                        .foregroundStyle(Theme.roseAccentText)
+                    Text(on ? "Tap stop when baby settles" : "One tap plays calming white noise")
+                        .font(.nunito(12, .semibold))
+                        .foregroundStyle(Theme.roseMuted)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(on ? "Stop" : "Play")
+                    .font(.nunito(13.5, .heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 9)
+                    .background(Theme.tileGlyph, in: Capsule())
             }
-            LazyVGrid(columns: columns, spacing: 18) {
-                NavigationLink {
-                    RecipesView()
-                } label: {
-                    TileLabel(title: "Recipes", asset: "recipes", icon: Theme.tileGlyph, bg: Theme.peach, isPremium: true)
-                }
-
-                NavigationLink {
-                    MySpendingView()
-                } label: {
-                    TileLabel(title: "My Spending", asset: "my-spending", icon: Theme.tileGlyph, bg: Theme.peach, isPremium: true)
-                }
-
-                NavigationLink {
-                    SyncToCloudView()
-                } label: {
-                    TileLabel(title: "Sync to Cloud", asset: "sync-to-cloud", icon: Theme.tileGlyph, bg: Theme.peach, isPremium: true)
-                }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.roseTint, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(Theme.roseSoftBorder, lineWidth: 2)
             }
         }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.22), value: on)
     }
 
-    private func sectionHeading(_ text: String) -> some View {
-        Text(text)
-            .font(.baloo(17, heavy: true))
-            .foregroundStyle(Theme.ink)
-    }
-
-    private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
+    /// Premium tiles open the paywall until the subscription is unlocked.
+    private func tile(_ title: String, _ asset: String, premium: Bool = false, action: @escaping () -> Void) -> some View {
+        Button {
+            if premium && !isPremium { showingPaywall = true } else { action() }
+        } label: {
+            MenuTile(title: title, asset: asset, premium: premium)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Data helpers
 
-    /// The soonest upcoming thing today — a scheduled block or an appointment.
+    /// The soonest upcoming thing today — a scheduled block, an appointment or
+    /// the next pump session.
     private var nextEvent: (title: String, date: Date)? {
         let now = Date()
         var candidates: [(title: String, date: Date)] = []
@@ -350,45 +319,115 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Tile
+// MARK: - Soothe disc
 
-private struct TileLabel: View {
-    let title: String
-    /// Name of the custom vector icon in the asset catalog (e.g. "feed-log").
-    let asset: String
-    /// Accent colour — used only for the premium lock badge.
-    let icon: Color
-    let bg: Color
-    var isPremium = false
+/// The waves glyph on the soothe row. While the noise plays it breathes and
+/// sends two rings out into the card — the only way to tell from across the
+/// room that the sound is actually on.
+private struct SootheDisc: View {
+    let playing: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathing = false
+
+    private var animates: Bool { playing && !reduceMotion }
 
     var body: some View {
-        VStack(spacing: 9) {
+        ZStack {
+            if animates {
+                // Staggered so one ring is always mid-flight.
+                ForEach(0..<2, id: \.self) { index in
+                    SootheRing(delay: Double(index) * 1.2)
+                }
+            }
+            Image("icon-waves")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 22, height: 22)
+                .foregroundStyle(playing ? .white : Theme.tileGlyph)
+                .frame(width: 46, height: 46)
+                .background(playing ? Theme.tileGlyph : Color.white, in: Circle())
+                .scaleEffect(breathing ? 1.06 : 1)
+        }
+        .onChange(of: animates) { _, on in
+            if on {
+                withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                    breathing = true
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.3)) { breathing = false }
+            }
+        }
+    }
+}
+
+/// One ring, expanding and fading. Starts its loop on appear so it can't miss
+/// the state change that inserted it.
+private struct SootheRing: View {
+    let delay: Double
+
+    @State private var out = false
+
+    var body: some View {
+        Circle()
+            .stroke(Theme.tileGlyph, lineWidth: 2.5)
+            .frame(width: 46, height: 46)
+            .scaleEffect(out ? 1.42 : 1)
+            .opacity(out ? 0 : 0.75)
+            .onAppear {
+                withAnimation(
+                    .easeOut(duration: 2.4).repeatForever(autoreverses: false).delay(delay)
+                ) {
+                    out = true
+                }
+            }
+    }
+}
+
+// MARK: - Tile
+
+/// A circular menu tile. Premium tiles wear a blush ring and a star.
+private struct MenuTile: View {
+    let title: String
+    let asset: String
+    var premium = false
+
+    var body: some View {
+        VStack(spacing: 8) {
             ZStack(alignment: .topTrailing) {
                 Circle()
-                    .fill(bg)
-                    .frame(width: 56, height: 56)
-                    .overlay(Circle().stroke(.white, lineWidth: 3))
-                    .overlay(
+                    .fill(premium ? Theme.roseBadgeBg : Theme.peach)
+                    .frame(width: 62, height: 62)
+                    .overlay {
+                        Circle().strokeBorder(
+                            premium ? Theme.roseBadgeBorder : .white,
+                            lineWidth: premium ? 2.5 : 3
+                        )
+                    }
+                    .overlay {
                         Image(asset)
                             .renderingMode(.original)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 26, height: 26)
+                            .resizable().scaledToFit()
+                            .frame(width: 34, height: 34)
+                    }
+                    .shadow(
+                        color: premium ? Color(hex: 0xB46E82).opacity(0.18) : Color(hex: 0x7A6248).opacity(0.13),
+                        radius: 7, y: 5
                     )
-                    .shadow(color: Theme.cardShadow, radius: 8, y: 5)
-                if isPremium {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(4)
-                        .background(icon, in: Circle())
-                        .overlay(Circle().stroke(.white, lineWidth: 1.5))
+                if premium {
+                    Image("icon-star-white")
+                        .renderingMode(.original)
+                        .resizable().scaledToFit()
+                        .frame(width: 10, height: 10)
+                        .frame(width: 18, height: 18)
+                        .background(Theme.roseStrong, in: Circle())
+                        .overlay(Circle().strokeBorder(Theme.canvas, lineWidth: 2))
                         .offset(x: 3, y: -3)
                 }
             }
             Text(title)
                 .font(.nunito(12, .bold))
-                .foregroundStyle(Theme.inkSoft)
+                .foregroundStyle(premium ? Color(hex: 0x9A6472) : Theme.inkSoft)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
         }
@@ -396,137 +435,66 @@ private struct TileLabel: View {
     }
 }
 
-// MARK: - Placeholder destinations
+// MARK: - Notifications
 
-private struct FeaturePlaceholderView: View {
-    let title: String
-    let systemImage: String
-    let message: String
-    var isPremium = false
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: systemImage)
-                .font(.system(size: 56))
-                .foregroundStyle(isPremium ? .pink : .blue)
-            Text(title)
-                .font(.title2.bold())
-                .multilineTextAlignment(.center)
-            if isPremium {
-                Label("Premium feature", systemImage: "lock.fill")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.pink)
-            }
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Text("Coming soon 🌸")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
-        }
-        .padding(32)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct NotificationsView: View {
+struct NotificationsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header: centered title + "Done" pill
             ZStack {
                 Text("Notifications")
-                    .font(.baloo(20, heavy: true))
+                    .font(.baloo(17, heavy: true))
                     .foregroundStyle(Theme.ink)
                 HStack {
                     Spacer()
                     Button { dismiss() } label: {
                         Text("Done")
-                            .font(.nunito(16, .bold))
+                            .font(.nunito(13, .heavy))
                             .foregroundStyle(Theme.roseText)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
                             .background(Theme.rosePillBg, in: Capsule())
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 18)
+            .padding(.horizontal, 18)
+            .padding(.top, 20)
 
             Spacer()
-            Spacer()
-            Spacer()
 
-            // Empty state
-            VStack(spacing: 22) {
-                Image("bell")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 46, height: 48)
-                    .foregroundStyle(Color(hex: 0xB07F4E))
-                    .frame(width: 120, height: 120)
-                    .background(Color(hex: 0xF7E0C6), in: Circle())
-                VStack(spacing: 12) {
-                    Text("You're all caught up")
-                        .font(.baloo(25, heavy: true))
-                        .foregroundStyle(Theme.ink)
-                    Text("Reminders and gentle nudges will show up here.")
-                        .font(.nunito(16))
-                        .foregroundStyle(Theme.inkMuted)
-                        .multilineTextAlignment(.center)
-                }
+            VStack(spacing: 0) {
+                Image("bell-amber")
+                    .renderingMode(.original)
+                    .resizable().scaledToFit()
+                    .frame(width: 34, height: 36)
+                    .frame(width: 86, height: 86)
+                    .background(Theme.peach, in: Circle())
+                Text("You're all caught up")
+                    .font(.baloo(21, heavy: true))
+                    .foregroundStyle(Theme.ink)
+                    .padding(.top, 16)
+                Text("Reminders and gentle nudges will show up here.")
+                    .font(.nunito(14, .semibold))
+                    .lineSpacing(5)
+                    .foregroundStyle(Theme.inkFaint)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 6)
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 40)
 
             Spacer()
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.canvas.ignoresSafeArea())
+        .background(Theme.canvas)
+        .presentationBackground(Theme.canvas)
         .presentationDragIndicator(.hidden)
     }
 }
 
-struct SharePlan: Identifiable {
-    let id = UUID()
-    let title: String
-    let text: String
-}
-
-struct PlanShareView: View {
-    let plan: SharePlan
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                Text(plan.text)
-                    .font(.body)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-            }
-            .navigationTitle(plan.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    ShareLink(item: plan.text) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
-            }
-        }
-    }
-}
-
 #Preview {
-    HomeView(selectedTab: .constant(0))
+    HomeView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }

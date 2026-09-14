@@ -57,7 +57,7 @@ struct WeeklyProgressView: View {
                 }
                 .padding(.top, 16)
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 120)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

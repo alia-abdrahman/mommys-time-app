@@ -9,7 +9,10 @@ struct PremiumPaywallView: View {
     @State private var plan = "Yearly"
 
     private struct Perk { let asset, title, sub: String }
+    /// Must stay in step with everything actually gated: the three starred tiles
+    /// on Home and the Sync row in Settings.
     private let perks = [
+        Perk(asset: "wake-window", title: "Wake Window", sub: "Awake or asleep in one tap, with a sleep summary"),
         Perk(asset: "recipes", title: "Recipes", sub: "One-pot meals for you, first foods for baby"),
         Perk(asset: "my-spending", title: "My Spending", sub: "See where the baby budget actually goes"),
         Perk(asset: "sync-to-cloud", title: "Sync to Cloud", sub: "Your logs backed up and on every device"),
@@ -84,7 +87,7 @@ struct PremiumPaywallView: View {
                 .font(.baloo(22, heavy: true))
                 .foregroundStyle(PW.textPrimary)
                 .multilineTextAlignment(.center)
-            Text("Three features that take the mental load off — yours for less than a tin of formula.")
+            Text("\(perkCount) features that take the mental load off — yours for less than a tin of formula.")
                 .font(.nunito(13.5, .semibold)).lineSpacing(5)
                 .foregroundStyle(PW.textMuted)
                 .multilineTextAlignment(.center)
@@ -93,6 +96,11 @@ struct PremiumPaywallView: View {
         .frame(maxWidth: .infinity)
         .padding(20)
         .background(PW.roseFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    /// Spelled out so the headline can't drift when a perk is added or removed.
+    private var perkCount: String {
+        ["No", "One", "Two", "Three", "Four", "Five", "Six"][safe: perks.count] ?? "\(perks.count)"
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -231,7 +239,7 @@ private enum PW {
     static let roseValue = Color(hex: 0xC46A82)
     static let roseCTA = Color(hex: 0xD9758C)
     static let linkRose = Color(hex: 0xC97B8C)
-    static let saveGreen = Color(hex: 0x7FBFAE)
+    static let saveGreen = Color(hex: 0xD98FA0)
     static let radioIdle = Color(hex: 0xF4EDE4)
     static let hintText = Color(hex: 0xA99B8C)
 }

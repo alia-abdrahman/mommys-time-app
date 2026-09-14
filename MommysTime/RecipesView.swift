@@ -28,11 +28,14 @@ struct RecipesView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    tabControl
+                    heroCard
+                    tabControl.padding(.top, 10)
+                    caption.padding(.top, 16)
+
                     if filtered.isEmpty {
                         emptyState
                     } else {
-                        VStack(spacing: 11) {
+                        VStack(spacing: 9) {
                             ForEach(filtered, id: \.objectID) { recipe in
                                 NavigationLink {
                                     RecipeDetailView(recipe: recipe)
@@ -42,14 +45,12 @@ struct RecipesView: View {
                                 .buttonStyle(LiftRowStyle())
                             }
                         }
-                        .padding(.top, 16)
-
-                        addOwnRow.padding(.top, 11)
+                        .padding(.top, 12)
                     }
                 }
                 .padding(.top, 18)
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 120)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -65,29 +66,72 @@ struct RecipesView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .onAppear(perform: seedIfNeeded)
     }
 
-    private var addOwnRow: some View {
-        Button { showingAdd = true } label: {
-            HStack(spacing: 7) {
-                Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                Text("Add your own recipe").font(.nunito(12.5, .heavy))
+    /// Blush panel over the list: what this collection is for, and the one
+    /// action the screen exists to offer.
+    private var heroCard: some View {
+        VStack(spacing: 0) {
+            Image("recipes")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(Theme.tileGlyph)
+                .frame(width: 38, height: 38)
+                .background(.white, in: Circle())
+                .padding(.bottom, 8)
+
+            Text(category == "Baby" ? "First foods, sorted" : "Real meals, fast")
+                .font(.baloo(20, heavy: true))
+                .foregroundStyle(Theme.roseInk)
+
+            HStack(spacing: 6) {
+                Text("Cooking for")
+                    .font(.nunito(13, .bold))
+                    .foregroundStyle(Theme.roseMuted)
+                Text(category == "Baby" ? "baby" : "you")
+                    .font(.nunito(13, .heavy))
+                    .foregroundStyle(Theme.roseAccentText)
+                    .padding(.vertical, 2).padding(.horizontal, 9)
+                    .background(.white, in: Capsule())
             }
-            .foregroundStyle(RC.roseText)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(Color(hex: 0xC97B8C).opacity(0.45),
-                                  style: StrokeStyle(lineWidth: 2, dash: [6]))
-            )
+            .padding(.top, 4)
+
+            Button { showingAdd = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold))
+                    Text("Add your own recipe").font(.baloo(16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(Theme.tileGlyph, in: Capsule())
+                .shadow(color: Color(hex: 0xBE5F78).opacity(0.34), radius: 9, y: 8)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14).padding(.horizontal, 20)
+        .background(RC.roseFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    private var caption: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(category == "Baby" ? "For baby" : "For you")
+                .font(.baloo(19, heavy: true))
+                .foregroundStyle(Theme.ink)
+            Text(category == "Baby"
+                 ? "Gentle first tastes that freeze well in cubes."
+                 : "One pot, few steps, nothing that needs two hands.")
+                .font(.nunito(12.5, .semibold))
+                .foregroundStyle(Theme.inkFaint)
+        }
+        .padding(.horizontal, 2)
     }
 
     private func showToast(_ message: String) {
@@ -121,27 +165,27 @@ struct RecipesView: View {
     }
 
     private var tabControl: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             ForEach(RecipeCategory.all, id: \.self) { cat in
                 let sel = category == cat
                 Button { withAnimation(.easeInOut(duration: 0.2)) { category = cat } } label: {
                     Text(cat)
-                        .font(.nunito(14, .heavy))
-                        .foregroundStyle(sel ? .white : RC.roseText)
+                        .font(.nunito(12.5, .heavy))
+                        .foregroundStyle(sel ? Theme.roseText : Theme.inkFaint)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
+                        .padding(.vertical, 8)
                         .background {
                             if sel {
-                                Capsule().fill(RC.roseAccent)
-                                    .shadow(color: RC.roseAccent.opacity(0.35), radius: 12, y: 5)
+                                Capsule().fill(.white)
+                                    .shadow(color: Color(hex: 0x7A6248).opacity(0.14), radius: 4, y: 2)
                             }
                         }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(5)
-        .background(RC.roseFill, in: Capsule())
+        .padding(4)
+        .background(Theme.field, in: Capsule())
     }
 
     private var emptyState: some View {
@@ -155,20 +199,9 @@ struct RecipesView: View {
                 .font(.nunito(15))
                 .foregroundStyle(RC.textMuted)
                 .multilineTextAlignment(.center)
-            Button { showingAdd = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus").font(.system(size: 14, weight: .bold))
-                    Text("Add a recipe").font(.baloo(15))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 22).padding(.vertical, 14)
-                .background(RC.roseAccent, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.top, 40)
         .padding(.horizontal, 24)
     }
 
@@ -305,7 +338,7 @@ struct RecipeDetailView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

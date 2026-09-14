@@ -28,27 +28,23 @@ struct PumpTrackerView: View {
                     heroCard
                     statsCard.padding(.top, 10)
 
-                    if !sessions.isEmpty {
-                        Text("HISTORY")
-                            .font(.nunito(12, .heavy))
-                            .tracking(0.8)
-                            .foregroundStyle(PT.textMuted)
-                            .padding(.top, 12)
-                            .padding(.bottom, 7)
-                        VStack(spacing: 7) {
-                            ForEach(sessions, id: \.objectID) { session in
-                                PumpSessionRow(session: session) { editing = session }
-                                    .contextMenu {
-                                        Button("Edit") { editing = session }
-                                        Button("Delete", role: .destructive) { delete(session) }
-                                    }
-                            }
-                        }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Your pumping rhythm")
+                            .font(.baloo(19, heavy: true))
+                            .foregroundStyle(Theme.ink)
+                        Text("A week at a glance — steady beats perfect.")
+                            .font(.nunito(12.5, .semibold))
+                            .foregroundStyle(Theme.inkFaint)
                     }
+                    .padding(.top, 16)
+                    .padding(.horizontal, 2)
+
+                    WeeklyBarChart(title: "ML PUMPED · LAST 7 DAYS", values: weekVolumes, tint: PT.blueAccent)
+                        .padding(.top, 14)
                 }
                 .padding(.top, 18)
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 120)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,7 +60,7 @@ struct PumpTrackerView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -172,7 +168,19 @@ struct PumpTrackerView: View {
 
     private var statsCard: some View {
         HStack(spacing: 0) {
-            statColumn(value: "\(todaySessions.count)", label: "sessions today")
+            // Tapping the count opens the day-by-day history.
+            NavigationLink {
+                LogHistoryView(
+                    title: "Session History",
+                    entries: historyRows,
+                    summary: daySummary,
+                    onSelect: { id in editing = sessions.first { $0.objectID == id } },
+                    onDelete: { id in sessions.first { $0.objectID == id }.map(delete) }
+                )
+            } label: {
+                statColumn(value: "\(todaySessions.count)", label: "sessions today", linked: true)
+            }
+            .buttonStyle(.plain)
             Rectangle().fill(PT.divider).frame(width: 1)
             statColumn(value: "\(todayML)", label: "ml today")
         }
@@ -181,16 +189,25 @@ struct PumpTrackerView: View {
         .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
     }
 
-    private func statColumn(value: String, label: String) -> some View {
+    private func statColumn(value: String, label: String, linked: Bool = false) -> some View {
         VStack(spacing: 2) {
             Text(value)
                 .font(.baloo(22, heavy: true))
                 .foregroundStyle(PT.blueAccent)
-            Text(label)
-                .font(.nunito(11.5, .bold))
-                .foregroundStyle(PT.textMuted)
+            HStack(spacing: 5) {
+                Text(label)
+                    .font(.nunito(11.5, .bold))
+                    .foregroundStyle(PT.textMuted)
+                if linked {
+                    Image("icon-history")
+                        .renderingMode(.original)
+                        .resizable().scaledToFit()
+                        .frame(width: 13, height: 13)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
     }
 
     private var todaySessions: [PumpSession] {
@@ -199,6 +216,43 @@ struct PumpTrackerView: View {
 
     private var todayML: Int {
         todaySessions.reduce(0) { $0 + Int($1.amountML) }
+    }
+
+    /// Millilitres per day for the last seven days, oldest first.
+    private var weekVolumes: [Int] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        return (0..<7).reversed().map { offset in
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return 0 }
+            return sessions
+                .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+                .reduce(0) { $0 + Int($1.amountML) }
+        }
+    }
+
+    private var historyRows: [HistoryRow] {
+        sessions.map { session in
+            HistoryRow(
+                id: session.objectID,
+                time: session.date ?? .distantPast,
+                title: "\(session.side ?? "Both") side",
+                detail: "\(session.amountML) ml · \(durationLabel(Int(session.durationMinutes)))"
+            )
+        }
+    }
+
+    private func daySummary(_ day: Date) -> String {
+        let list = sessions.filter { Calendar.current.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+        guard !list.isEmpty else { return "no entries" }
+        let ml = list.reduce(0) { $0 + Int($1.amountML) }
+        let count = "\(list.count) \(list.count == 1 ? "SESSION" : "SESSIONS")"
+        return ml > 0 ? "\(count) · \(ml) ML" : count
+    }
+
+    private func durationLabel(_ m: Int) -> String {
+        if m < 60 { return "\(m) min" }
+        let h = m / 60, r = m % 60
+        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
     }
 
     private func delete(_ session: PumpSession) {
@@ -214,55 +268,20 @@ struct PumpTrackerView: View {
     }
 }
 
-private struct PumpSessionRow: View {
-    @ObservedObject var session: PumpSession
-    var onTap: () -> Void
-
-    private var detail: String {
-        var parts = ["\(session.durationMinutes) min"]
-        if session.amountML > 0 { parts.append("\(session.amountML) ml") }
-        if let side = session.side, !side.isEmpty { parts.append(side) }
-        return parts.joined(separator: " · ")
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "drop.fill")
-                .font(.system(size: 13))
-                .foregroundStyle(PT.blueAccent)
-                .frame(width: 30, height: 30)
-                .background(.white, in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text((session.date ?? Date()).formatted(.dateTime.weekday(.abbreviated).hour().minute()))
-                    .font(.nunito(14.5, .heavy))
-                    .foregroundStyle(PT.textPrimary)
-                Text(detail)
-                    .font(.nunito(12, .semibold))
-                    .foregroundStyle(PT.textMuted)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PT.blueRow, in: RoundedRectangle(cornerRadius: 20))
-        .contentShape(RoundedRectangle(cornerRadius: 20))
-        .onTapGesture(perform: onTap)
-    }
-}
-
 // MARK: - Pump tracker palette
 
 private enum PT {
     static let screenBg = Color(hex: 0xFFF8EE)
     static let textPrimary = Color(hex: 0x4A423B)
     static let textMuted = Color(hex: 0x9A8D80)
-    static let blueFill = Color(hex: 0xE2EDF3)
-    static let blueRow = Color(hex: 0xE9F1F6)
-    static let blueDeep = Color(hex: 0x3E566A)
-    static let blueMid = Color(hex: 0x7B93A5)
-    static let blueAccent = Color(hex: 0x6D91AB)
-    static let bluePill = Color(hex: 0x4E7488)
+    // The design's rose scale — these kept their old `blue*` names so every
+    // call site below stays put.
+    static let blueFill = Color(hex: 0xF6E6E9)
+    static let blueRow = Color(hex: 0xF9EDEF)
+    static let blueDeep = Color(hex: 0x7E3B50)
+    static let blueMid = Color(hex: 0xB0899A)
+    static let blueAccent = Color(hex: 0xD98FA0)
+    static let bluePill = Color(hex: 0xA85F6F)
     static let divider = Color(hex: 0x7A6248).opacity(0.12)
     static let backIcon = Color(hex: 0x8B7F72)
 }
@@ -365,7 +384,7 @@ struct PumpSessionSheet: View {
                 Button { amount = max(0, amount - 10) } label: {
                     Text("−").font(.nunito(20, .heavy)).foregroundStyle(LS.blueMid)
                         .frame(width: 46, height: 46).background(.white, in: Circle())
-                        .shadow(color: Color(hex: 0x3E566A).opacity(0.12), radius: 12, y: 4)
+                        .shadow(color: Color(hex: 0xBE5F78).opacity(0.12), radius: 12, y: 4)
                 }
                 .buttonStyle(.plain)
                 VStack(spacing: 0) {
@@ -543,17 +562,17 @@ private enum LS {
     static let textPrimary = Color(hex: 0x4A423B)
     static let textSecondary = Color(hex: 0x8A7E72)
     static let textMuted = Color(hex: 0x9A8D80)
-    static let blueFill = Color(hex: 0xE2EDF3)
-    static let blueNote = Color(hex: 0xE9F1F6)
-    static let blueDeep = Color(hex: 0x3E566A)
-    static let blueMid = Color(hex: 0x7B93A5)
-    static let blueAccent = Color(hex: 0x6D91AB)
-    static let bluePill = Color(hex: 0x4E7488)
+    static let blueFill = Color(hex: 0xF6E6E9)
+    static let blueNote = Color(hex: 0xF9EDEF)
+    static let blueDeep = Color(hex: 0x7E3B50)
+    static let blueMid = Color(hex: 0xB0899A)
+    static let blueAccent = Color(hex: 0xD98FA0)
+    static let bluePill = Color(hex: 0xA85F6F)
     static let fieldFill = Color(hex: 0xF4EDE4)
     static let valueText = Color(hex: 0x6E6358)
     static let accentRose = Color(hex: 0xD98FA0)
     static let disabledBg = Color(hex: 0xF0E7DC)
     static let disabledText = Color(hex: 0xB7AA9B)
     static let toggleOff = Color(hex: 0xE7DFD4)
-    static let toggleOn = Color(hex: 0x7FBFAE)
+    static let toggleOn = Color(hex: 0xD98FA0)
 }

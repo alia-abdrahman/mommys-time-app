@@ -72,32 +72,26 @@ struct MySpendingView: View {
             header
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    totalCard
+                    heroCard
+                    rangeControl.padding(.top, 10)
 
-                    HStack {
-                        Text("By category")
-                            .font(.baloo(15, heavy: true))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Where it goes")
+                            .font(.baloo(19, heavy: true))
                             .foregroundStyle(SP.textPrimary)
-                        Spacer()
-                        Text("\(filtered.count) purchase\(filtered.count == 1 ? "" : "s")")
-                            .font(.nunito(12, .bold))
+                        Text(compareLine)
+                            .font(.nunito(12.5, .semibold))
                             .foregroundStyle(SP.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(.top, 16).padding(.bottom, 10)
+                    .padding(.top, 16).padding(.horizontal, 2)
 
-                    if byCategory.isEmpty {
-                        rangeEmptyState
-                    } else {
-                        categoryBars
-                    }
+                    categoryCard.padding(.top, 12)
 
-                    Text("RECENT")
-                        .font(.nunito(12, .heavy)).tracking(0.8)
-                        .foregroundStyle(SP.textMuted)
-                        .padding(.top, 18).padding(.bottom, 8)
+                    recentHeader.padding(.top, 20).padding(.bottom, 8)
                     recentList
                 }
-                .padding(.top, 14)
+                .padding(.top, 18)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 120)
             }
@@ -112,7 +106,7 @@ struct MySpendingView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -143,106 +137,151 @@ struct MySpendingView: View {
         .padding(.top, 8)
     }
 
-    // MARK: Total card
+    // MARK: Hero
 
-    private var totalCard: some View {
+    private var heroCard: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(eyebrow).font(.nunito(12, .bold)).foregroundStyle(SP.roseTag)
-                    Text(spendingCurrency(total))
-                        .font(.baloo(32, heavy: true))
-                        .foregroundStyle(SP.roseValue)
+            Image("my-spending")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(Theme.tileGlyph)
+                .frame(width: 38, height: 38)
+                .background(.white, in: Circle())
+                .padding(.bottom, 8)
+
+            Text(spendingCurrency(total))
+                .font(.baloo(20, heavy: true))
+                .foregroundStyle(Theme.roseInk)
+
+            HStack(spacing: 6) {
+                Text(eyebrow + " ·")
+                    .font(.nunito(13, .bold))
+                    .foregroundStyle(SP.roseTag)
+                Text("\(filtered.count) purchase\(filtered.count == 1 ? "" : "s")")
+                    .font(.nunito(13, .heavy))
+                    .foregroundStyle(Theme.roseAccentText)
+                    .padding(.vertical, 2).padding(.horizontal, 9)
+                    .background(.white, in: Capsule())
+            }
+            .padding(.top, 4)
+
+            Button { showingAdd = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold))
+                    Text("Log a purchase").font(.baloo(16))
                 }
-                Spacer(minLength: 0)
-                Button { showingAdd = true } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(SP.roseCTA, in: Circle())
-                        .shadow(color: Color(hex: 0xBE5F78).opacity(0.4), radius: 16, y: 6)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(Theme.tileGlyph, in: Capsule())
+                .shadow(color: Color(hex: 0xBE5F78).opacity(0.34), radius: 9, y: 8)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14).padding(.horizontal, 20)
+        .background(SP.roseFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    private var rangeControl: some View {
+        HStack(spacing: 5) {
+            ForEach(ranges, id: \.self) { r in
+                let sel = r == range
+                Button { withAnimation(.easeInOut(duration: 0.2)) { range = r } } label: {
+                    Text(r)
+                        .font(.nunito(12.5, .heavy))
+                        .foregroundStyle(sel ? Theme.roseText : Theme.inkFaint)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background {
+                            if sel {
+                                Capsule().fill(.white)
+                                    .shadow(color: Color(hex: 0x7A6248).opacity(0.14), radius: 4, y: 2)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
             }
-
-            HStack(spacing: 6) {
-                ForEach(ranges, id: \.self) { r in
-                    let sel = r == range
-                    Button { withAnimation(.easeInOut(duration: 0.2)) { range = r } } label: {
-                        Text(r)
-                            .font(.nunito(12.5, .heavy))
-                            .foregroundStyle(sel ? .white : SP.roseTag)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background { if sel { Capsule().fill(SP.roseCTA) } }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(4)
-            .background(.white, in: Capsule())
-            .padding(.top, 14)
-
-            Text(compareLine)
-                .font(.nunito(12, .bold))
-                .foregroundStyle(SP.roseTag)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
         }
-        .padding(.vertical, 16).padding(.horizontal, 18)
-        .background(SP.roseFill, in: RoundedRectangle(cornerRadius: 26))
+        .padding(4)
+        .background(Theme.field, in: Capsule())
     }
 
     // MARK: Category bars
 
-    private var categoryBars: some View {
+    private var categoryCard: some View {
         let maxAmount = byCategory.map(\.total).max() ?? 1
-        return VStack(spacing: 11) {
-            ForEach(byCategory, id: \.category) { item in
-                VStack(spacing: 4) {
-                    HStack {
-                        Text(item.category).font(.nunito(12, .bold)).foregroundStyle(SP.textSecondary)
-                        Spacer()
-                        Text(spendingCurrency(item.total)).font(.nunito(12, .bold)).foregroundStyle(SP.roseValue)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(SP.trackBg)
-                            Capsule().fill(SP.categoryColor(item.category))
-                                .frame(width: geo.size.width * CGFloat(item.total / maxAmount))
+        return VStack(spacing: 12) {
+            if byCategory.isEmpty {
+                VStack(spacing: 5) {
+                    Text("Nothing logged yet")
+                        .font(.baloo(16, heavy: true))
+                        .foregroundStyle(SP.textPrimary)
+                    Text("Add a purchase and you'll see where the money actually goes.")
+                        .font(.nunito(12.5, .semibold)).lineSpacing(4)
+                        .foregroundStyle(SP.textMuted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 22).padding(.horizontal, 6)
+            } else {
+                ForEach(byCategory, id: \.category) { item in
+                    VStack(spacing: 5) {
+                        HStack {
+                            Text(item.category).font(.nunito(12, .bold)).foregroundStyle(SP.textSecondary)
+                            Spacer()
+                            Text(spendingCurrency(item.total)).font(.nunito(12, .bold)).foregroundStyle(SP.roseValue)
                         }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(SP.trackBg)
+                                Capsule().fill(SP.categoryColor(item.category))
+                                    .frame(width: geo.size.width * CGFloat(item.total / maxAmount))
+                            }
+                        }
+                        .frame(height: 12)
                     }
-                    .frame(height: 12)
                 }
             }
         }
-    }
-
-    private var rangeEmptyState: some View {
-        VStack(spacing: 5) {
-            Text("Nothing logged yet")
-                .font(.baloo(16, heavy: true))
-                .foregroundStyle(SP.textPrimary)
-            Text("Add a purchase with the + button to start tracking where the money goes.")
-                .font(.nunito(13, .semibold)).lineSpacing(4)
-                .foregroundStyle(SP.textMuted)
-                .multilineTextAlignment(.center)
-        }
+        .padding(15)
         .frame(maxWidth: .infinity)
-        .padding(18)
-        .background(SP.roseRow, in: RoundedRectangle(cornerRadius: 22))
-        .padding(.top, 8)
+        .background(.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.08), radius: 8, y: 4)
     }
 
     // MARK: Recent list
 
-    private var recentList: some View {
-        VStack(spacing: 9) {
-            ForEach(filtered, id: \.objectID) { expense in
-                ExpenseRow(expense: expense) { delete(expense) }
+    private var recentHeader: some View {
+        HStack {
+            SectionLabel("RECENT")
+            NavigationLink {
+                AllPurchasesView()
+            } label: {
+                HStack(spacing: 5) {
+                    Text("View all")
+                        .font(.nunito(12, .heavy))
+                        .foregroundStyle(Theme.roseAccentText)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(Theme.roseAccentText)
+                }
             }
+            .buttonStyle(.plain)
         }
+    }
+
+    /// Only the five most recent — the rest live on All Purchases.
+    private var recentList: some View {
+        ExpenseListCard(expenses: Array(filtered.prefix(5)),
+                        empty: "Nothing logged in this range",
+                        onDelete: delete)
     }
 
     private func delete(_ expense: Expense) {
@@ -260,6 +299,39 @@ struct MySpendingView: View {
     }
 }
 
+/// One bordered card holding every purchase row, hairlines between — the same
+/// treatment the log histories use.
+private struct ExpenseListCard: View {
+    let expenses: [Expense]
+    let empty: String
+    var onDelete: (Expense) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if expenses.isEmpty {
+                Text(empty)
+                    .font(.nunito(13.5, .bold))
+                    .foregroundStyle(SP.textMuted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 26).padding(.horizontal, 22)
+            } else {
+                ForEach(Array(expenses.enumerated()), id: \.element.objectID) { index, expense in
+                    if index > 0 { CardDivider() }
+                    ExpenseRow(expense: expense) { onDelete(expense) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.07), radius: 8, y: 4)
+    }
+}
+
 private struct ExpenseRow: View {
     @ObservedObject var expense: Expense
     var onDelete: () -> Void
@@ -271,18 +343,18 @@ private struct ExpenseRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(expense.title ?? "")
-                    .font(.nunito(14.5, .heavy))
+                    .font(.nunito(14, .heavy))
                     .foregroundStyle(SP.textPrimary)
                 Text(meta)
-                    .font(.nunito(12, .semibold))
+                    .font(.nunito(11.5, .semibold))
                     .foregroundStyle(SP.textMuted)
             }
             Spacer(minLength: 8)
             Text(spendingCurrency(expense.amount))
-                .font(.nunito(14.5, .heavy))
+                .font(.nunito(14, .heavy))
                 .foregroundStyle(SP.roseValue)
                 .fixedSize()
             Button(action: onDelete) {
@@ -290,13 +362,154 @@ private struct ExpenseRow: View {
                     .font(.nunito(13, .heavy))
                     .foregroundStyle(SP.removeIcon)
                     .frame(width: 26, height: 26)
-                    .background(.white, in: Circle())
+                    .background(Theme.field, in: Circle())
             }
             .buttonStyle(.plain)
         }
-        .padding(.vertical, 12).padding(.horizontal, 16)
+        .padding(.vertical, 12).padding(.horizontal, 15)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SP.roseRow, in: RoundedRectangle(cornerRadius: 20))
+    }
+}
+
+// MARK: - All purchases
+
+/// Every purchase ever logged, optionally narrowed to a single date.
+struct AllPurchasesView: View {
+    @Environment(\.managedObjectContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \Expense.date, ascending: false)],
+        animation: .default
+    )
+    private var expenses: FetchedResults<Expense>
+
+    @State private var day: Date?
+    @State private var calendarOpen = false
+    @State private var toast: String?
+
+    private let calendar = Calendar.current
+
+    private var shown: [Expense] {
+        guard let day else { return Array(expenses) }
+        return expenses.filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                DetailHeader(title: "All Purchases") { dismiss() }
+
+                ZStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        filterBar
+
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(day == nil ? "Every purchase" : dayLabel)
+                                .font(.baloo(15, heavy: true))
+                                .foregroundStyle(SP.textPrimary)
+                            Spacer()
+                            Text(totalLabel)
+                                .font(.nunito(11, .heavy)).tracking(0.5)
+                                .foregroundStyle(Theme.roseAccentText)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.top, 14).padding(.bottom, 8)
+
+                        ExpenseListCard(expenses: shown,
+                                        empty: day == nil ? "Nothing logged yet" : "Nothing logged on this date",
+                                        onDelete: delete)
+                    }
+                    if calendarOpen { popover }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 116)
+        }
+        .background(Theme.canvas.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 120)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    private var dayLabel: String {
+        (day ?? Date()).formatted(.dateTime.day().month(.abbreviated))
+    }
+
+    private var totalLabel: String {
+        guard !shown.isEmpty else { return "" }
+        let sum = shown.reduce(0.0) { $0 + $1.amount }
+        return "\(shown.count) ITEM\(shown.count == 1 ? "" : "S") · " + spendingCurrency(sum).uppercased()
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Button { withAnimation(.easeOut(duration: 0.16)) { day = nil; calendarOpen = false } } label: {
+                Text("All dates")
+                    .font(.nunito(12.5, .heavy))
+                    .foregroundStyle(day == nil ? .white : Theme.inkFaint)
+                    .padding(.horizontal, 15).padding(.vertical, 9)
+                    .background(day == nil ? Theme.tileGlyph : Theme.field, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Button { withAnimation(.easeOut(duration: 0.16)) { calendarOpen.toggle() } } label: {
+                HStack(spacing: 6) {
+                    Text(day == nil ? "Pick a date" : dayLabel)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .heavy))
+                        .rotationEffect(.degrees(calendarOpen ? 180 : 0))
+                }
+                .font(.nunito(12.5, .heavy))
+                .foregroundStyle(day == nil ? Theme.inkFaint : .white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9).padding(.horizontal, 12)
+                .background(day == nil ? Theme.field : Theme.tileGlyph, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Theme.softShadow, radius: 9, y: 5)
+    }
+
+    private var popover: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 62)
+            MiniCalendarPopover(
+                date: Binding(get: { day ?? Date() }, set: { day = $0 }),
+                hasEntries: { date in
+                    expenses.contains { calendar.isDate($0.date ?? .distantPast, inSameDayAs: date) }
+                }
+            ) { picked in
+                withAnimation(.easeOut(duration: 0.16)) {
+                    day = picked
+                    calendarOpen = false
+                }
+            }
+        }
+        .zIndex(2)
+    }
+
+    private func delete(_ expense: Expense) {
+        let name = expense.title ?? "Purchase"
+        withAnimation { context.delete(expense) }
+        try? context.save()
+        withAnimation { toast = "\(name) removed" }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
     }
 }
 
@@ -611,5 +824,5 @@ private enum EX {
     static let disabledBg = Color(hex: 0xF0E7DC)
     static let disabledText = Color(hex: 0xB7AA9B)
     static let toggleOff = Color(hex: 0xE7DFD4)
-    static let toggleOn = Color(hex: 0x7FBFAE)
+    static let toggleOn = Color(hex: 0xD98FA0)
 }

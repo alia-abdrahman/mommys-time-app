@@ -11,8 +11,12 @@ struct SharePlanSheet: View {
     )
     private var allBlocks: FetchedResults<ScheduleBlock>
 
-    /// Builds the plain-language summary handed to the OS share sheet.
-    var planText: (Date) -> String
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \Appointment.date, ascending: true)],
+        animation: .default
+    )
+    private var appointments: FetchedResults<Appointment>
+
     var onSent: (String) -> Void = { _ in }
 
     @State private var day = "Today"
@@ -200,6 +204,46 @@ struct SharePlanSheet: View {
         let s = m.start.formatted(.dateTime.hour().minute())
         let e = m.end.formatted(.dateTime.hour().minute())
         return "Please cover \(s)–\(e) so I can take my \(durationLabel(m))."
+    }
+
+    /// The plain-language summary handed to the OS share sheet — readable by a
+    /// caregiver who doesn't have the app.
+    private func planText(_ day: Date) -> String {
+        let calendar = Calendar.current
+        let dayLabel = day.formatted(.dateTime.weekday(.wide).day().month())
+        var lines = ["🌸 Plan for \(dayLabel)", ""]
+
+        if !items.isEmpty {
+            lines.append("Schedule:")
+            for item in items {
+                let s = item.start.formatted(.dateTime.hour().minute())
+                let e = item.end.formatted(.dateTime.hour().minute())
+                lines.append("• \(s)–\(e)  \(item.title)")
+            }
+            lines.append("")
+        }
+
+        let dayAppointments = appointments
+            .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
+        if !dayAppointments.isEmpty {
+            lines.append("Appointments:")
+            for appt in dayAppointments {
+                let time = appt.date?.formatted(.dateTime.hour().minute()) ?? ""
+                var line = "• \(time)  \(appt.title ?? "")"
+                if let location = appt.location, !location.isEmpty { line += " @ \(location)" }
+                lines.append(line)
+            }
+            lines.append("")
+        }
+
+        if items.isEmpty && dayAppointments.isEmpty {
+            lines.append("Nothing scheduled yet.")
+            lines.append("")
+        }
+
+        lines.append("Sent with love from MommysTime 💛")
+        return lines.joined(separator: "\n")
     }
 
     private func durationLabel(_ item: Item) -> String {

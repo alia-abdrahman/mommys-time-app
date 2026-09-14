@@ -31,10 +31,10 @@ enum BlockCategory: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
-        case .kids: return Color(hex: 0x7C77B5)      // Kids
-        case .chores: return Color(hex: 0xB98B58)    // Chores
+        case .kids: return Color(hex: 0xC4788C)      // Kids
+        case .chores: return Color(hex: 0xC08497)    // Chores
         case .appointment: return Color(hex: 0xC97B8C)
-        case .quiet: return Color(hex: 0x4E9E86)     // Baby / quiet time
+        case .quiet: return Color(hex: 0xD9758C)     // Baby / quiet time
         case .meTime: return Color(hex: 0xD98FA0)    // Me-time
         }
     }
@@ -70,6 +70,12 @@ extension ScheduleBlock {
     func resolvedTimes(on day: Date, calendar: Calendar = .current) -> (start: Date, end: Date)? {
         guard let start = startTime, let end = endTime else { return nil }
         if repeatsDaily {
+            // A recurring block runs from the day it was added until its "Ends
+            // on" date — never before, and never after.
+            let target = calendar.startOfDay(for: day)
+            guard target >= calendar.startOfDay(for: start) else { return nil }
+            if let until = repeatsUntil, target > calendar.startOfDay(for: until) { return nil }
+
             let s = calendar.dateComponents([.hour, .minute], from: start)
             let e = calendar.dateComponents([.hour, .minute], from: end)
             guard let projectedStart = calendar.date(bySettingHour: s.hour ?? 0, minute: s.minute ?? 0, second: 0, of: day),

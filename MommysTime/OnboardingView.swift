@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Full-screen 7-step onboarding: welcome · baby · day · track · goal · care · done.
+/// Full-screen 6-step onboarding: welcome · baby · day · track · care · done.
 /// Nothing is mandatory — every input has a working default so the user can tap
 /// straight through. The flow writes through only on the final CTA.
 struct OnboardingView: View {
@@ -12,8 +12,6 @@ struct OnboardingView: View {
     @AppStorage(SettingsKeys.babyName) private var babyNameStore = ""
     @AppStorage(SettingsKeys.babyAgeBand) private var ageBandStore = "0–6 months"
     @AppStorage(SettingsKeys.trackers) private var trackersStore = "Pump,Feeds,Appointments"
-    @AppStorage(SettingsKeys.goalTitle) private var goalTitleStore = ""
-    @AppStorage(SettingsKeys.goalTarget) private var goalTargetStore = 3
     @AppStorage(SettingsKeys.caregiverName) private var caregiverNameStore = ""
     @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelationStore = "Husband"
 
@@ -27,13 +25,11 @@ struct OnboardingView: View {
     @State private var startMin = 360      // 6:00 AM
     @State private var endMin = 1320       // 10:00 PM
     @State private var trackers: Set<String> = ["Pump", "Feeds", "Appointments"]
-    @State private var goal = ""
-    @State private var target = 3
     @State private var caregiverName = ""
     @State private var relation = "Husband"
     @FocusState private var focused: Bool
 
-    private let total = 7
+    private let total = 6
     private var lastPage: Int { total - 1 }
 
     var body: some View {
@@ -103,8 +99,7 @@ struct OnboardingView: View {
         case 1: babyStep
         case 2: dayStep
         case 3: trackStep
-        case 4: goalStep
-        case 5: careStep
+        case 4: careStep
         default: doneStep
         }
     }
@@ -121,7 +116,7 @@ struct OnboardingView: View {
                     .font(.baloo(36, heavy: true))
                     .foregroundStyle(OB.textPrimary)
                     .padding(.top, 4)
-                Text("You already run the whole day. This app maps it out, then finds the pockets that belong to you.")
+                Text("Nobody hands you a manual for the newborn months. This app holds the whole of it — the baby, the house, the money, and you.")
                     .font(.nunito(15)).lineSpacing(6)
                     .foregroundStyle(OB.textMuted)
                     .multilineTextAlignment(.center)
@@ -129,9 +124,9 @@ struct OnboardingView: View {
             }
 
             VStack(spacing: 12) {
-                promiseCard("calendar", "Map the day", "Routines, chores, appointments")
-                promiseCard("magnifyingglass", "Find your pockets", "Real gaps, not wishful thinking")
-                promiseCard("paperplane", "Share the load", "Send the plan to your caregiver")
+                promiseCard("growth-log", "Know what's normal", "Feeds, sleep and growth, in plain numbers")
+                promiseCard("inventory", "Run the household", "Tasks, supplies, appointments, spending")
+                promiseCard("icon-users", "Never do it alone", "Ask other mothers, any hour of the night")
             }
             .padding(.top, 30)
         }
@@ -139,10 +134,11 @@ struct OnboardingView: View {
         .padding(.horizontal, 24)
     }
 
-    private func promiseCard(_ glyph: String, _ title: String, _ sub: String) -> some View {
+    private func promiseCard(_ asset: String, _ title: String, _ sub: String) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: glyph)
-                .font(.system(size: 18, weight: .semibold))
+            Image(asset)
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 21, height: 21)
                 .foregroundStyle(OB.glyphRose)
                 .frame(width: 42, height: 42)
                 .background(OB.tileFill, in: Circle())
@@ -162,7 +158,7 @@ struct OnboardingView: View {
 
     private var babyStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("Who are we caring for?", "This shapes your feed, pump and growth logs.")
+            heading("Tell us about your baby", "Age sets what's normal for feeds, sleep and growth.")
             nameCard(placeholder: "Baby's name", text: $babyName).padding(.top, 18)
             fieldLabel("HOW OLD?").padding(.top, 20).padding(.bottom, 9)
             chips(["Newborn", "0–6 months", "6–12 months", "1 year +"], selected: ageBand) { ageBand = $0 }
@@ -174,7 +170,7 @@ struct OnboardingView: View {
 
     private var dayStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("When does your day run?", "We only look for me-time between these hours.")
+            heading("When are you awake?", "Reminders and tasks stay inside these hours.")
             VStack(spacing: 0) {
                 dayRow("Starts", value: timeLabel(startMin),
                        onMinus: { startMin = max(240, startMin - 30) },
@@ -189,7 +185,7 @@ struct OnboardingView: View {
             .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
             .padding(.top, 18)
 
-            note("That's \(onDutyLabel) on duty. We'll look for your time inside it.")
+            note("That's \(onDutyLabel) on duty. Nothing will buzz outside it — nights are hard enough.")
                 .padding(.top, 14)
         }
         .padding(.top, 20).padding(.horizontal, 24)
@@ -222,7 +218,7 @@ struct OnboardingView: View {
 
     private var trackStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("What should we keep track of?", "Pick what's useful — you can change this later.")
+            heading("What's on your plate?", "Baby or household — pick what you want on your home screen.")
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                 ForEach(trackOptions, id: \.0) { name, asset in
                     let on = trackers.contains(name)
@@ -253,69 +249,29 @@ struct OnboardingView: View {
         .padding(.top, 20).padding(.horizontal, 24)
     }
 
-    // MARK: - Step 5 · Goal
-
-    private var goalStep: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            heading("What's one thing just for you?", "The app will hunt for time to make it happen.")
-            chips(["Read a book", "Stitch & craft", "Move my body", "Learn a language", "Just rest"],
-                  selected: goal) { goal = ($0 == goal ? "" : $0) }
-                .padding(.top, 16)
-
-            VStack(spacing: 0) {
-                TextField("Or write your own", text: $goal)
-                    .font(.nunito(15, .bold)).foregroundStyle(OB.textPrimary).tint(OB.roseCTA)
-                    .focused($focused)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 14)
-                Rectangle().fill(OB.divider).frame(height: 1)
-                HStack {
-                    Text("Target: \(target)× a week").font(.nunito(15, .bold)).foregroundStyle(OB.textPrimary)
-                    Spacer()
-                    HStack(spacing: 0) {
-                        Button { target = max(1, target - 1) } label: {
-                            Text("−").font(.nunito(16, .heavy)).foregroundStyle(OB.textSecondary).frame(width: 38, height: 34)
-                        }.buttonStyle(.plain)
-                        Rectangle().fill(Color(hex: 0x7A6248).opacity(0.18)).frame(width: 1, height: 18)
-                        Button { target = min(7, target + 1) } label: {
-                            Text("+").font(.nunito(16, .heavy)).foregroundStyle(OB.roseAccent).frame(width: 38, height: 34)
-                        }.buttonStyle(.plain)
-                    }
-                    .background(OB.fieldFill, in: Capsule())
-                }
-                .padding(.vertical, 12)
-            }
-            .padding(.horizontal, 18).padding(.vertical, 4)
-            .background(.white, in: RoundedRectangle(cornerRadius: 26))
-            .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
-            .padding(.top, 14)
-        }
-        .padding(.top, 20).padding(.horizontal, 24)
-    }
-
-    // MARK: - Step 6 · Care
+    // MARK: - Step 5 · Care
 
     private var careStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("Who shares the load?", "You'll be able to send them the plan in one tap.")
+            heading("Who's in your corner?", "One person you can hand something to on a bad day.")
             nameCard(placeholder: "Their name", text: $caregiverName).padding(.top, 18)
             fieldLabel("THEY ARE MY").padding(.top, 20).padding(.bottom, 9)
             chips(["Husband", "Wife", "Partner", "Mum", "Nanny"], selected: relation) { relation = $0 }
-            note("Nothing is sent until you tap Share — no accounts, no invites.").padding(.top, 16)
+            note("Just for your own reference — no accounts, no invites, nothing sent.").padding(.top, 16)
         }
         .padding(.top, 20).padding(.horizontal, 24)
     }
 
-    // MARK: - Step 7 · Done
+    // MARK: - Step 6 · Done
 
     private var doneStep: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                Text(babyName.isEmpty ? "You're all set" : "You and \(babyName) are set")
+                Text(babyName.isBlank ? "You're ready" : "You and \(babyName.trimmed) are ready")
                     .font(.baloo(30, heavy: true))
                     .foregroundStyle(OB.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("Here's what's set up. Change any of it in Settings.")
+                Text("One day at a time from here. Change any of this in Settings.")
                     .font(.nunito(14)).lineSpacing(6)
                     .foregroundStyle(OB.textMuted)
                     .multilineTextAlignment(.center)
@@ -323,11 +279,10 @@ struct OnboardingView: View {
             }
 
             VStack(spacing: 9) {
-                summaryRow("Baby", babyName.isEmpty ? ageBand : "\(babyName) · \(ageBand)")
+                summaryRow("Baby", "\(babyName.isBlank ? "Not set" : babyName.trimmed) · \(ageBand)")
                 summaryRow("Your day", "\(timeLabel(startMin)) – \(timeLabel(endMin))")
-                summaryRow("Tracking", "\(trackers.count) log\(trackers.count == 1 ? "" : "s")")
-                summaryRow("Your goal", goal.isEmpty ? "Skipped" : goal)
-                summaryRow("Sharing with", caregiverName.isEmpty ? "Nobody yet" : caregiverName)
+                summaryRow("Tracking", trackers.isEmpty ? "None yet" : "\(trackers.count) log\(trackers.count == 1 ? "" : "s")")
+                summaryRow("In my corner", caregiverName.isBlank ? "Nobody yet" : "\(caregiverName.trimmed) · \(relation)")
             }
             .padding(.top, 16)
         }
@@ -405,7 +360,7 @@ struct OnboardingView: View {
 
     private var primaryCTA: some View {
         Button(action: advance) {
-            Text(page == 0 ? "Let's set up" : page == lastPage ? "Open my app" : "Continue")
+            Text(page == 0 ? "Show me how" : page == lastPage ? "Open my app" : "Continue")
                 .font(.baloo(17))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -426,8 +381,6 @@ struct OnboardingView: View {
         startMin = clampStart(dayStartHour * 60)
         endMin = max(startMin + 120, dayEndHour * 60)
         trackers = Set(trackersStore.split(separator: ",").map(String.init).filter { !$0.isEmpty })
-        goal = goalTitleStore
-        target = min(7, max(1, goalTargetStore))
         caregiverName = caregiverNameStore
         relation = caregiverRelationStore
     }
@@ -452,24 +405,11 @@ struct OnboardingView: View {
         dayStartHour = Int((Double(startMin) / 60).rounded())
         dayEndHour = Int((Double(endMin) / 60).rounded())
         trackersStore = trackers.sorted().joined(separator: ",")
-        goalTitleStore = goal
-        goalTargetStore = target
         caregiverNameStore = caregiverName
         caregiverRelationStore = relation
 
-        let trimmed = goal.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            let g = Goal(context: context)
-            g.id = UUID()
-            g.name = trimmed
-            g.icon = "#F6E6E9"
-            g.targetSessionsPerWeek = Int16(target)
-            g.createdAt = Date()
-            try? context.save()
-        }
-
         hasCompletedOnboarding = true
-        onExit("All set — welcome, mama")
+        onExit(babyName.isBlank ? "All set — welcome" : "All set — welcome, mama")
     }
 
     private func timeLabel(_ minutes: Int) -> String {

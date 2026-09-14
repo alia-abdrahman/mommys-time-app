@@ -27,7 +27,7 @@ struct GoalsView: View {
                     }
                     .padding(.top, 16)
                     .padding(.horizontal, 18)
-                    .padding(.bottom, 96)
+                    .padding(.bottom, 120)
                 }
             }
         }
@@ -38,7 +38,7 @@ struct GoalsView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
