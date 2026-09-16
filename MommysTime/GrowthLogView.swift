@@ -1,6 +1,24 @@
 import SwiftUI
 import CoreData
 
+/// Which measurement the hero and the picker are showing. View state only —
+/// nothing is persisted under these keys.
+enum GrowthMetric: CaseIterable {
+    case weight, height, head
+
+    var label: String {
+        switch self {
+        case .weight: return L.Growth.metricWeight
+        case .height: return L.Growth.metricHeight
+        case .head: return L.Growth.metricHead
+        }
+    }
+
+    var unit: String {
+        self == .weight ? L.Growth.unitKg : L.Growth.unitCm
+    }
+}
+
 struct GrowthLogView: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -12,10 +30,9 @@ struct GrowthLogView: View {
 
     @State private var showingAdd = false
     @State private var editing: GrowthEntry?
-    @State private var metric = "Weight"
+    @State private var metric = GrowthMetric.weight
     @State private var toast: String?
 
-    private let metrics = ["Weight", "Height", "Head"]
     private var latest: GrowthEntry? { entries.first }
     /// Oldest → newest (birth is entry 0).
     private var chrono: [GrowthEntry] { Array(entries).reversed() }
@@ -33,20 +50,20 @@ struct GrowthLogView: View {
                         statsCard.padding(.top, 10)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("How baby is growing")
+                            Text(L.Growth.howTitle)
                                 .font(.baloo(19, heavy: true))
                                 .foregroundStyle(Theme.ink)
-                            Text("A visit at a time — every clinic check, plotted.")
+                            Text(L.Growth.howSub)
                                 .font(.nunito(12.5, .semibold))
                                 .foregroundStyle(Theme.inkFaint)
                         }
                         .padding(.top, 16)
                         .padding(.horizontal, 2)
 
-                        TrendLineChart(title: "WEIGHT · LAST 30 DAYS", unit: "kg",
+                        TrendLineChart(title: L.Growth.chartWeight, unit: L.Growth.unitKg,
                                        points: points { $0.weightKg })
                             .padding(.top, 14)
-                        TrendLineChart(title: "HEIGHT · LAST 30 DAYS", unit: "cm",
+                        TrendLineChart(title: L.Growth.chartHeight, unit: L.Growth.unitCm,
                                        points: points { $0.heightCm })
                             .padding(.top, 14)
                     }
@@ -90,7 +107,7 @@ struct GrowthLogView: View {
     // MARK: Header
 
     private var header: some View {
-        DetailHeader(title: "Growth Log") { dismiss() }
+        DetailHeader(title: L.Growth.title) { dismiss() }
             .padding(.top, 8)
     }
 
@@ -106,15 +123,15 @@ struct GrowthLogView: View {
                 .background(.white, in: Circle())
                 .padding(.bottom, 8)
 
-            Text("\(fmt(latest?.weightKg ?? 0)) kg · \(fmt(latest?.heightCm ?? 0)) cm")
+            Text(L.Growth.heroValue(weight: fmt(latest?.weightKg ?? 0), height: fmt(latest?.heightCm ?? 0)))
                 .font(.baloo(20, heavy: true))
                 .foregroundStyle(Theme.roseInk)
 
             HStack(spacing: 6) {
-                Text("Measured")
+                Text(L.Growth.measured)
                     .font(.nunito(13, .bold))
                     .foregroundStyle(Theme.roseMuted)
-                Text(latest?.date?.formatted(.dateTime.day().month(.abbreviated)) ?? "—")
+                Text(latest?.date?.formatted(.dateTime.day().month(.abbreviated)) ?? L.Common.none)
                     .font(.nunito(13, .heavy))
                     .foregroundStyle(Theme.roseAccentText)
                     .padding(.vertical, 2)
@@ -123,7 +140,7 @@ struct GrowthLogView: View {
             }
             .padding(.top, 4)
 
-            PrimaryButton(title: "Add a measurement", icon: "icon-plus-white",
+            PrimaryButton(title: L.Growth.addCTA, icon: "icon-plus-white",
                           tint: Theme.tileGlyph, height: 50) {
                 showingAdd = true
             }
@@ -142,11 +159,11 @@ struct GrowthLogView: View {
             GrowthHistoryView(entries: Array(entries))
         } label: {
             HStack(spacing: 0) {
-                statColumn(fmt(latest?.weightKg ?? 0), "weight (kg)", linked: true)
+                statColumn(fmt(latest?.weightKg ?? 0), L.Growth.statWeight, linked: true)
                 Rectangle().fill(GL.divider).frame(width: 1)
-                statColumn(fmt(latest?.heightCm ?? 0), "height (cm)")
+                statColumn(fmt(latest?.heightCm ?? 0), L.Growth.statHeight)
                 Rectangle().fill(GL.divider).frame(width: 1)
-                statColumn(fmt(latest?.headCm ?? 0), "head (cm)")
+                statColumn(fmt(latest?.headCm ?? 0), L.Growth.statHead)
             }
             .padding(12)
             .background(.white, in: RoundedRectangle(cornerRadius: 24))
@@ -180,37 +197,37 @@ struct GrowthLogView: View {
 
     private func value(_ e: GrowthEntry) -> Double {
         switch metric {
-        case "Height": return e.heightCm
-        case "Head": return e.headCm
-        default: return e.weightKg
+        case .height: return e.heightCm
+        case .head: return e.headCm
+        case .weight: return e.weightKg
         }
     }
-    private var unit: String { metric == "Weight" ? "kg" : "cm" }
+    private var unit: String { metric.unit }
     private func fmt(_ v: Double) -> String { v.formatted(.number.precision(.fractionLength(0...1))) }
-    private func valueLabel(_ v: Double) -> String { "\(fmt(v)) \(unit)" }
+    private func valueLabel(_ v: Double) -> String { L.Recipes.amount(fmt(v), unit) }
 
     private func ageLabel(_ entry: GrowthEntry) -> String {
         guard let birth = chrono.first?.date, let date = entry.date else { return "" }
-        if entry.objectID == chrono.first?.objectID { return "Birth" }
-        if Calendar.current.isDateInToday(date) { return "Today" }
+        if entry.objectID == chrono.first?.objectID { return L.Growth.birth }
+        if Calendar.current.isDateInToday(date) { return L.Common.today }
         let months = Calendar.current.dateComponents([.month], from: birth, to: date).month ?? 0
-        return months <= 0 ? "New" : "\(months) mo"
+        return months <= 0 ? L.Growth.newborn : L.Growth.months(months)
     }
 
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer()
-            Text("No measurements yet")
+            Text(L.Growth.emptyTitle)
                 .font(.baloo(20, heavy: true))
                 .foregroundStyle(GL.textPrimary)
-            Text("Record your baby's weight, height and head size to watch them grow.")
+            Text(L.Growth.emptyBody)
                 .font(.nunito(15))
                 .foregroundStyle(GL.textMuted)
                 .multilineTextAlignment(.center)
             Button { showingAdd = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.system(size: 14, weight: .bold))
-                    Text("Add a measurement").font(.baloo(15))
+                    Text(L.Growth.addCTA).font(.baloo(15))
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 22).padding(.vertical, 14)
@@ -263,10 +280,8 @@ struct GrowthSheet: View {
     @State private var weight: Double
     @State private var height: Double
     @State private var head: Double
-    @State private var metric = "Weight"
+    @State private var metric = GrowthMetric.weight
     @State private var weightToast = false
-
-    private let metrics = ["Weight", "Height", "Head"]
 
     init(entry: GrowthEntry? = nil, previous: GrowthEntry? = nil, onSaved: @escaping (String) -> Void = { _ in }) {
         self.entry = entry
@@ -294,7 +309,7 @@ struct GrowthSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 metricHero.padding(.top, 20)
-                sectionLabel("THIS VISIT").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Growth.sectionVisit).padding(.top, 20).padding(.bottom, 8)
                 visitCard
                 footerNote.padding(.top, 14)
             }
@@ -308,7 +323,7 @@ struct GrowthSheet: View {
         .presentationDragIndicator(.hidden)
         .overlay(alignment: .bottom) {
             if weightToast {
-                Toast(text: "Add a weight first")
+                Toast(text: L.Growth.toastNeedsWeight)
                     .padding(.bottom, 40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -319,12 +334,12 @@ struct GrowthSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(isEditing ? "Edit Measurement" : "Add Measurement")
+            Text(isEditing ? L.Growth.sheetEditTitle : L.Growth.sheetNewTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(AM.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(AM.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -334,7 +349,7 @@ struct GrowthSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : AM.disabledText)
                         .padding(.vertical, 8).padding(.horizontal, 18)
@@ -348,29 +363,29 @@ struct GrowthSheet: View {
     // MARK: Metric hero
 
     private var eyebrow: String {
-        switch metric {
-        case "Height": return "Height"
-        case "Head": return "Head circumference"
-        default: return "Weight"
-        }
+        metric == .head ? L.Growth.eyebrowHead : metric.label
     }
-    private var unit: String { metric == "Weight" ? "kg" : "cm" }
+    private var unit: String { metric.unit }
     private var currentValue: Double {
-        switch metric { case "Height": return height; case "Head": return head; default: return weight }
+        switch metric {
+        case .height: return height
+        case .head: return head
+        case .weight: return weight
+        }
     }
     private var stepCaption: String {
         switch metric {
-        case "Height": return "0.5 cm steps"
-        case "Head": return "0.1 cm steps"
-        default: return "0.1 kg steps"
+        case .height: return L.Growth.stepHeight
+        case .head: return L.Growth.stepHead
+        case .weight: return L.Growth.stepWeight
         }
     }
 
     private func step(_ dir: Double) {
         switch metric {
-        case "Height": height = round1(max(0, height + dir * 0.5))
-        case "Head": head = round1(max(0, head + dir * 0.1))
-        default: weight = round1(max(0, weight + dir * 0.1))
+        case .height: height = round1(max(0, height + dir * 0.5))
+        case .head: head = round1(max(0, head + dir * 0.1))
+        case .weight: weight = round1(max(0, weight + dir * 0.1))
         }
     }
 
@@ -384,14 +399,14 @@ struct GrowthSheet: View {
             .padding(.top, 4)
             HStack(spacing: 10) {
                 Button { step(-1) } label: {
-                    Text("−").font(.nunito(20, .heavy)).foregroundStyle(AM.purpleMid)
+                    Text(L.Glyph.minus).font(.nunito(20, .heavy)).foregroundStyle(AM.purpleMid)
                         .frame(width: 46, height: 46).background(.white, in: Circle())
                         .shadow(color: Color(hex: 0xC4788C).opacity(0.12), radius: 12, y: 4)
                 }
                 .buttonStyle(.plain)
                 Text(stepCaption).font(.nunito(12, .bold)).foregroundStyle(AM.purpleMid).frame(minWidth: 52)
                 Button { step(1) } label: {
-                    Text("+").font(.nunito(20, .heavy)).foregroundStyle(.white)
+                    Text(L.Glyph.plus).font(.nunito(20, .heavy)).foregroundStyle(.white)
                         .frame(width: 46, height: 46).background(AM.purpleAccent, in: Circle())
                         .shadow(color: AM.purpleAccent.opacity(0.4), radius: 16, y: 6)
                 }
@@ -399,10 +414,10 @@ struct GrowthSheet: View {
             }
             .padding(.top, 14)
             HStack(spacing: 6) {
-                ForEach(metrics, id: \.self) { m in
+                ForEach(GrowthMetric.allCases, id: \.self) { m in
                     let sel = m == metric
                     Button { metric = m } label: {
-                        Text(m)
+                        Text(m.label)
                             .font(.nunito(12.5, .heavy))
                             .foregroundStyle(sel ? .white : AM.purpleText)
                             .frame(maxWidth: .infinity)
@@ -430,21 +445,21 @@ struct GrowthSheet: View {
 
     private var visitCard: some View {
         VStack(spacing: 0) {
-            valueRow("Weight", "\(fmt(weight)) kg"); rowDivider
-            valueRow("Height", "\(fmt(height)) cm"); rowDivider
-            valueRow("Head", "\(fmt(head)) cm"); rowDivider
+            valueRow(L.Growth.metricWeight, L.Growth.valueKg(fmt(weight))); rowDivider
+            valueRow(L.Growth.metricHeight, L.Growth.valueCm(fmt(height))); rowDivider
+            valueRow(L.Growth.metricHead, L.Growth.valueCm(fmt(head))); rowDivider
             HStack {
-                Text("Measured on").font(.nunito(15, .bold)).foregroundStyle(AM.textPrimary)
+                Text(L.Growth.measuredOn).font(.nunito(15, .bold)).foregroundStyle(AM.textPrimary)
                 Spacer()
                 HStack(spacing: 0) {
                     Button { date = date.addingTimeInterval(-86400) } label: {
-                        Text("−").font(.nunito(16, .heavy)).foregroundStyle(AM.textSecondary).frame(width: 36, height: 32)
+                        Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(AM.textSecondary).frame(width: 36, height: 32)
                     }
                     .buttonStyle(.plain)
                     Text(date.formatted(.dateTime.day().month(.abbreviated).year()))
                         .font(.nunito(13, .heavy)).foregroundStyle(AM.valueText).frame(minWidth: 96)
                     Button { date = date.addingTimeInterval(86400) } label: {
-                        Text("+").font(.nunito(16, .heavy)).foregroundStyle(AM.purpleAccent).frame(width: 36, height: 32)
+                        Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(AM.purpleAccent).frame(width: 36, height: 32)
                     }
                     .buttonStyle(.plain)
                 }
@@ -484,9 +499,9 @@ struct GrowthSheet: View {
     private var noteText: String {
         if weight > prevWeight, prevWeight > 0, let d = prevDate {
             let since = d.formatted(.dateTime.day().month(.abbreviated))
-            return "Up \(fmt(weight - prevWeight)) kg since \(since). Growing beautifully."
+            return L.Growth.noteGained(fmt(weight - prevWeight), since: since)
         }
-        return "Fill in all three while you're at the clinic — the chart needs every visit."
+        return L.Growth.noteFillIn
     }
 
     // MARK: Helpers
@@ -512,7 +527,7 @@ struct GrowthSheet: View {
         target.heightCm = height
         target.headCm = head
         try? context.save()
-        if entry == nil { onSaved("Measurement saved") }
+        if entry == nil { onSaved(L.Growth.toastSaved) }
         dismiss()
     }
 }

@@ -18,8 +18,12 @@ struct InventoryView: View {
     @State private var creating = false
     @State private var toast: String?
 
-    private enum Filter: String, CaseIterable {
-        case all = "All", low = "Needs refill"
+    private enum Filter: CaseIterable {
+        case all, low
+
+        var label: String {
+            self == .low ? L.Inventory.filterLow : L.Inventory.filterAll
+        }
     }
 
     private var lowItems: [InventoryItem] {
@@ -60,7 +64,7 @@ struct InventoryView: View {
     }
 
     private var header: some View {
-        DetailHeader(title: "Inventory", onBack: { dismiss() }) {
+        DetailHeader(title: L.Inventory.title, onBack: { dismiss() }) {
             CircleAddButton { creating = true }
         }
         .padding(.top, 8)
@@ -73,7 +77,7 @@ struct InventoryView: View {
             ForEach(Filter.allCases, id: \.self) { f in
                 let on = filter == f
                 Button { withAnimation(.easeInOut(duration: 0.18)) { filter = f } } label: {
-                    Text(f.rawValue)
+                    Text(f.label)
                         .font(.nunito(12.5, .heavy))
                         .foregroundStyle(on ? Theme.roseText : Theme.inkFaint)
                         .frame(maxWidth: .infinity)
@@ -94,12 +98,12 @@ struct InventoryView: View {
 
     private var countRow: some View {
         HStack {
-            Text("\(items.count) \(items.count == 1 ? "ITEM" : "ITEMS")")
+            Text(L.Inventory.itemCount(items.count))
                 .font(.nunito(10.5, .heavy))
                 .tracking(0.9)
                 .foregroundStyle(Theme.inkMuted)
             Spacer()
-            Text(lowItems.isEmpty ? "ALL STOCKED" : "\(lowItems.count) NEEDS REFILL")
+            Text(lowItems.isEmpty ? L.Inventory.allStocked : L.Inventory.needsRefillCount(lowItems.count))
                 .font(.nunito(10.5, .heavy))
                 .tracking(0.9)
                 .foregroundStyle(Theme.roseDeep)
@@ -117,8 +121,8 @@ struct InventoryView: View {
                 if index > 0 { CardDivider() }
                 InventoryRow(item: item) { editing = item }
                     .contextMenu {
-                        Button("Edit") { editing = item }
-                        Button("Delete", role: .destructive) { delete(item) }
+                        Button(L.Common.edit) { editing = item }
+                        Button(L.Common.delete, role: .destructive) { delete(item) }
                     }
             }
             if shown.isEmpty { emptyRow }
@@ -134,12 +138,10 @@ struct InventoryView: View {
 
     private var emptyRow: some View {
         VStack(spacing: 5) {
-            Text(filter == .low ? "Nothing needs refilling" : "Nothing tracked yet")
+            Text(filter == .low ? L.Inventory.emptyLowTitle : L.Inventory.emptyTitle)
                 .font(.baloo(16, heavy: true))
                 .foregroundStyle(Theme.ink)
-            Text(filter == .low
-                 ? "Every item is above its warning level."
-                 : "Add whatever you keep running out of — and paste the link you reorder it from.")
+            Text(filter == .low ? L.Inventory.emptyLowBody : L.Inventory.emptyBody)
                 .font(.nunito(12.5, .semibold))
                 .lineSpacing(5)
                 .foregroundStyle(Theme.inkFaint)
@@ -178,7 +180,7 @@ private struct InventoryRow: View {
                 VStack(spacing: 0) {
                     Text("\(item.quantity)")
                         .font(.nunito(15, .heavy))
-                    Text("LEFT")
+                    Text(L.Inventory.left)
                         .font(.nunito(8, .heavy))
                         .tracking(0.5)
                         .opacity(0.75)
@@ -197,7 +199,7 @@ private struct InventoryRow: View {
                     .truncationMode(.tail)
 
                 if isLow {
-                    Text("NEEDS REFILL")
+                    Text(L.Inventory.needsRefill)
                         .font(.nunito(9, .heavy))
                         .tracking(0.3)
                         .foregroundStyle(Theme.roseLabel)
@@ -261,18 +263,18 @@ struct InventorySheet: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: isEditing ? "Edit item" : "New item",
+                SheetHeader(title: isEditing ? L.Inventory.sheetEditTitle : L.Inventory.sheetNewTitle,
                             enabled: canSave,
                             onCancel: { dismiss() }, onConfirm: save)
 
                 hero.padding(.top, 20)
 
-                SectionLabel("ITEM").padding(.top, 20).padding(.bottom, 8)
+                SectionLabel(L.Inventory.sectionItem).padding(.top, 20).padding(.bottom, 8)
                 itemCard
 
-                SectionLabel("PHOTO").padding(.top, 20).padding(.bottom, 8)
+                SectionLabel(L.Inventory.sectionPhoto).padding(.top, 20).padding(.bottom, 8)
                 photoCard
-                Text("A photo helps you spot the exact brand next time you reorder.")
+                Text(L.Inventory.photoHint)
                     .font(.nunito(11.5, .semibold))
                     .lineSpacing(4)
                     .foregroundStyle(Theme.inkFaint)
@@ -303,11 +305,11 @@ struct InventorySheet: View {
                 .frame(width: 48, height: 48)
                 .background(.white, in: Circle())
             VStack(alignment: .leading, spacing: 2) {
-                Text(name.isBlank ? "New item" : name)
+                Text(name.isBlank ? L.Inventory.heroFallback : name)
                     .font(.baloo(19, heavy: true))
                     .foregroundStyle(Theme.roseInk)
                     .lineLimit(1)
-                Text("×\(quantity) on hand")
+                Text(L.Inventory.onHand(quantity))
                     .font(.nunito(12.5, .bold))
                     .foregroundStyle(Theme.roseDeep)
             }
@@ -320,18 +322,18 @@ struct InventorySheet: View {
 
     private var itemCard: some View {
         VStack(spacing: 0) {
-            TextField("Item name", text: $name)
+            TextField(L.Inventory.namePlaceholder, text: $name)
                 .font(.nunito(15, .bold))
                 .foregroundStyle(Theme.ink)
                 .padding(.vertical, 14)
             CardDivider()
 
             HStack {
-                Text("In stock")
+                Text(L.Inventory.inStock)
                     .font(.nunito(15, .bold))
                     .foregroundStyle(Theme.ink)
                 Spacer()
-                SoftStepper(label: "×\(quantity)", minWidth: 66, tint: Theme.roseStrong) {
+                SoftStepper(label: L.Inventory.quantity(quantity), minWidth: 66, tint: Theme.roseStrong) {
                     quantity = max(0, quantity - 1)
                 } onIncrement: {
                     quantity = min(999, quantity + 1)
@@ -341,7 +343,7 @@ struct InventorySheet: View {
             CardDivider()
 
             HStack {
-                Text("Remind me to reorder")
+                Text(L.Inventory.remindReorder)
                     .font(.nunito(15, .bold))
                     .foregroundStyle(Theme.ink)
                 Spacer()
@@ -351,7 +353,7 @@ struct InventorySheet: View {
             CardDivider()
 
             HStack(spacing: 10) {
-                TextField("Reorder link (paste a URL)", text: $link)
+                TextField(L.Inventory.linkPlaceholder, text: $link)
                     .font(.nunito(14, .bold))
                     .foregroundStyle(Theme.ink)
                     .keyboardType(.URL)
@@ -390,7 +392,7 @@ struct InventorySheet: View {
                     VStack(spacing: 6) {
                         Image(systemName: "photo")
                             .font(.system(size: 22, weight: .regular))
-                        Text("Add a photo of this item")
+                        Text(L.Inventory.addPhoto)
                             .font(.nunito(12.5, .bold))
                     }
                     .foregroundStyle(Color(hex: 0xB08A5E))
@@ -414,7 +416,7 @@ struct InventorySheet: View {
                     .renderingMode(.original)
                     .resizable().scaledToFit()
                     .frame(width: 14, height: 14)
-                Text("Remove from inventory")
+                Text(L.Inventory.removeButton)
                     .font(.nunito(14, .heavy))
                     .foregroundStyle(Theme.tileGlyph)
             }
@@ -428,14 +430,14 @@ struct InventorySheet: View {
 
     private func save() {
         guard canSave else {
-            onToast("Name the item first")
+            onToast(L.Inventory.toastNeedsName)
             return
         }
         let target = item ?? InventoryItem(context: context)
         if item == nil {
             target.id = UUID()
             target.createdAt = Date()
-            target.category = "Other"
+            target.category = L.Inventory.defaultCategoryKey
             target.threshold = 3
         }
         target.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -446,16 +448,17 @@ struct InventorySheet: View {
         try? context.save()
 
         dismiss()
-        onToast("\(target.name ?? "Item") \(isEditing ? "updated" : "added")")
+        let label = target.name ?? L.Inventory.fallbackName
+        onToast(isEditing ? L.Inventory.toastUpdated(label) : L.Inventory.toastAdded(label))
     }
 
     private func remove() {
         guard let item else { return }
-        let label = item.name ?? "Item"
+        let label = item.name ?? L.Inventory.fallbackName
         context.delete(item)
         try? context.save()
         dismiss()
-        onToast("\(label) removed")
+        onToast(L.Inventory.toastRemoved(label))
     }
 }
 

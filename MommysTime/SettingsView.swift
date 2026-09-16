@@ -8,11 +8,13 @@ enum SettingsDestination: Hashable {
 struct SettingsView: View {
     var onToast: (String) -> Void = { _ in }
 
+    @EnvironmentObject private var language: LanguageStore
+
     @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
     @AppStorage(SettingsKeys.isPremium) private var isPremium = false
-    @AppStorage(SettingsKeys.userName) private var userName = "Nadia"
+    @AppStorage(SettingsKeys.userName) private var userName = L.Settings.defaultUserName
     @AppStorage(SettingsKeys.babyName) private var babyName = ""
-    @AppStorage(SettingsKeys.babyAgeBand) private var babyAge = "0–6 months"
+    @AppStorage(SettingsKeys.babyAgeBand) private var babyAge = AgeBandOption.zeroToSix
 
     @State private var path = NavigationPath()
     @State private var sheet: SettingsSheet?
@@ -26,7 +28,7 @@ struct SettingsView: View {
         NavigationStack(path: $path) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Settings")
+                    Text(L.Settings.title)
                         .font(.baloo(32))
                         .foregroundStyle(Theme.ink)
                         .padding(.horizontal, 22)
@@ -34,13 +36,13 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         profileCard.padding(.top, 16)
 
-                        SectionLabel("APP").padding(.top, 20).padding(.bottom, 8).padding(.horizontal, 4)
+                        SectionLabel(L.Settings.sectionApp).padding(.top, 20).padding(.bottom, 8).padding(.horizontal, 4)
                         appCard
 
-                        SectionLabel("SUPPORT").padding(.top, 20).padding(.bottom, 8).padding(.horizontal, 4)
+                        SectionLabel(L.Settings.sectionSupport).padding(.top, 20).padding(.bottom, 8).padding(.horizontal, 4)
                         supportCard
 
-                        SectionLabel("ABOUT").padding(.top, 20).padding(.bottom, 8).padding(.horizontal, 4)
+                        SectionLabel(L.Settings.sectionAbout).padding(.top, 20).padding(.bottom, 8).padding(.horizontal, 4)
                         aboutCard
 
                         signOutButton.padding(.top, 18)
@@ -88,10 +90,13 @@ struct SettingsView: View {
                     Text(userName)
                         .font(.baloo(18, heavy: true))
                         .foregroundStyle(Theme.ink)
-                    Text("\(babyName.isBlank ? "Baby" : babyName) · \(babyAge)")
+                    Text(L.Settings.profileSubtitle(
+                        baby: babyName.isBlank ? L.Settings.babyFallback : babyName,
+                        age: AgeBandOption.label(babyAge)
+                    ))
                         .font(.nunito(12.5, .semibold))
                         .foregroundStyle(Theme.inkMuted)
-                    Text(isPremium ? "PREMIUM MEMBER" : "FREE PLAN")
+                    Text(isPremium ? L.Settings.premiumMember : L.Settings.freePlan)
                         .font(.nunito(10, .heavy))
                         .foregroundStyle(isPremium ? Theme.roseLabel : Theme.inkBody)
                         .padding(.horizontal, 10)
@@ -118,35 +123,41 @@ struct SettingsView: View {
 
     private var appCard: some View {
         groupedCard {
-            SettingsRow(icon: "appointment", title: "My day & scheduling") {
+            SettingsRow(icon: "appointment", title: L.Settings.rowDay) {
                 path.append(SettingsDestination.dayConfig)
             }
             CardDivider()
-            SettingsRow(icon: "bell-rose", title: "Notifications") { sheet = .notifications }
+            // Presented from RootView — picking a language rebuilds this view,
+            // so a sheet owned here would be torn down mid-tap.
+            SettingsRow(icon: "icon-globe", title: L.Settings.rowLanguage, value: language.language.label) {
+                language.isPickerPresented = true
+            }
             CardDivider()
-            SettingsRow(icon: "sync-to-cloud", title: "Sync to Cloud", badge: isPremium ? nil : "PREMIUM") {
+            SettingsRow(icon: "bell-rose", title: L.Settings.rowNotifications) { sheet = .notifications }
+            CardDivider()
+            SettingsRow(icon: "sync-to-cloud", title: L.Settings.rowSync, badge: isPremium ? nil : L.Settings.premiumBadge) {
                 if isPremium { path.append(SettingsDestination.sync) } else { sheet = .paywall }
             }
             CardDivider()
-            SettingsRow(icon: "icon-star", title: "Subscription") {
-                if isPremium { onToast("You're already Premium, mama") } else { sheet = .paywall }
+            SettingsRow(icon: "icon-star", title: L.Settings.rowSubscription) {
+                if isPremium { onToast(L.Settings.toastAlreadyPremium) } else { sheet = .paywall }
             }
         }
     }
 
     private var supportCard: some View {
         groupedCard {
-            SettingsRow(icon: "icon-message", title: "Send feedback") { sheet = .feedback }
+            SettingsRow(icon: "icon-message", title: L.Settings.rowFeedback) { sheet = .feedback }
             CardDivider()
-            SettingsRow(icon: "icon-help", title: "Help & FAQ") {
-                onToast("Help centre opens in the full build")
+            SettingsRow(icon: "icon-help", title: L.Settings.rowHelp) {
+                onToast(L.Settings.toastHelp)
             }
             CardDivider()
-            SettingsRow(icon: "icon-star", title: "Rate Mommy's Time") {
-                onToast("Store rating opens in the full build")
+            SettingsRow(icon: "icon-star", title: L.Settings.rowRate) {
+                onToast(L.Settings.toastRate)
             }
             CardDivider()
-            SettingsRow(icon: "icon-rerun", title: "Run setup again") {
+            SettingsRow(icon: "icon-rerun", title: L.Settings.rowRerun) {
                 hasCompletedOnboarding = false
             }
         }
@@ -154,12 +165,12 @@ struct SettingsView: View {
 
     private var aboutCard: some View {
         groupedCard {
-            SettingsRow(icon: "icon-privacy", title: "Privacy policy") {
-                onToast("Privacy policy opens in the full build")
+            SettingsRow(icon: "icon-privacy", title: L.Settings.rowPrivacy) {
+                onToast(L.Settings.toastPrivacy)
             }
             CardDivider()
-            SettingsRow(icon: "icon-terms", title: "Terms of use") {
-                onToast("Terms open in the full build")
+            SettingsRow(icon: "icon-terms", title: L.Settings.rowTerms) {
+                onToast(L.Settings.toastTerms)
             }
         }
     }
@@ -177,8 +188,8 @@ struct SettingsView: View {
     }
 
     private var signOutButton: some View {
-        Button { onToast("Signed out — in the full build this returns to login") } label: {
-            Text("Sign out")
+        Button { onToast(L.Settings.toastSignedOut) } label: {
+            Text(L.Settings.signOut)
                 .font(.nunito(14, .heavy))
                 .foregroundStyle(Theme.tileGlyph)
                 .frame(maxWidth: .infinity)
@@ -194,7 +205,7 @@ struct SettingsView: View {
     }
 
     private var footer: some View {
-        Text("Mommy's Time \(AppInfo.version)\nMade for mamas in Malaysia")
+        Text(L.Settings.footer(AppInfo.version))
             .font(.nunito(11.5, .semibold))
             .lineSpacing(5)
             .foregroundStyle(Theme.inkWhisper)
@@ -208,6 +219,9 @@ struct SettingsView: View {
 private struct SettingsRow: View {
     let icon: String
     let title: String
+    /// The current setting, shown quietly before the chevron — unlike `badge`,
+    /// which is a rose "PREMIUM" call-out.
+    var value: String?
     var badge: String?
     var action: () -> Void
 
@@ -224,6 +238,13 @@ private struct SettingsRow: View {
                     .font(.nunito(15, .bold))
                     .foregroundStyle(Theme.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let value {
+                    Text(value)
+                        .font(.nunito(13, .semibold))
+                        .foregroundStyle(Theme.inkMuted)
+                        .lineLimit(1)
+                        .padding(.trailing, 8)
+                }
                 if let badge {
                     Text(badge)
                         .font(.nunito(9.5, .heavy))
@@ -254,9 +275,9 @@ struct Chevron: View {
 enum AppInfo {
     static var version: String {
         let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "1.0"
-        let build = info?["CFBundleVersion"] as? String ?? "1"
-        return "v\(short) (build \(build))"
+        let short = info?["CFBundleShortVersionString"] as? String ?? L.App.versionFallback
+        let build = info?["CFBundleVersion"] as? String ?? L.App.buildFallback
+        return L.App.version(short, build: build)
     }
 }
 
@@ -275,32 +296,32 @@ struct DayConfigView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                SectionLabel("YOUR DAY").padding(.bottom, 8)
+                SectionLabel(L.Settings.daySection).padding(.bottom, 8)
 
                 SoftCard(padding: .init(top: 0, leading: 18, bottom: 0, trailing: 18)) {
                     VStack(spacing: 0) {
-                        stepperRow("My day starts", hourLabel(dayStartHour),
+                        stepperRow(L.Settings.dayStarts, hourLabel(dayStartHour),
                                    down: { dayStartHour = max(4, dayStartHour - 1) },
                                    up: { dayStartHour = min(dayEndHour - 2, dayStartHour + 1) })
                         CardDivider()
-                        stepperRow("My day ends", hourLabel(dayEndHour),
+                        stepperRow(L.Settings.dayEnds, hourLabel(dayEndHour),
                                    down: { dayEndHour = max(dayStartHour + 2, dayEndHour - 1) },
                                    up: { dayEndHour = min(23, dayEndHour + 1) })
                     }
                 }
-                hint("The app only looks for me-time between these hours.")
+                hint(L.Settings.dayHint)
 
                 SoftCard {
-                    stepperRow("Kids' bedtime", hourLabel(bedtimeHour),
+                    stepperRow(L.Settings.bedtime, hourLabel(bedtimeHour),
                                down: { bedtimeHour = max(17, bedtimeHour - 1) },
                                up: { bedtimeHour = min(23, bedtimeHour + 1) })
                 }
                 .padding(.top, 14)
-                hint("Free time after bedtime gets a bonus — the house is quiet.")
+                hint(L.Settings.bedtimeHint)
 
                 SoftCard {
                     HStack {
-                        Text("Minimum gap")
+                        Text(L.Settings.minimumGap)
                             .font(.nunito(15, .bold))
                             .foregroundStyle(Theme.ink)
                         Spacer()
@@ -313,7 +334,7 @@ struct DayConfigView: View {
                     .padding(.vertical, 15)
                 }
                 .padding(.top, 14)
-                hint("Gaps shorter than this won't be suggested — you deserve more than a rushed five minutes.")
+                hint(L.Settings.minimumGapHint)
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -324,7 +345,7 @@ struct DayConfigView: View {
         .safeAreaInset(edge: .top) {
             HStack(spacing: 12) {
                 CircleBackButton { dismiss() }
-                Text("My day")
+                Text(L.Settings.dayTitle)
                     .font(.baloo(24, heavy: true))
                     .foregroundStyle(Theme.ink)
                 Spacer()
@@ -357,11 +378,7 @@ struct DayConfigView: View {
             .padding(.horizontal, 4)
     }
 
-    private func gapLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
-    }
+    private func gapLabel(_ m: Int) -> String { L.Duration.compact(m) }
 
     private func hourLabel(_ hour: Int) -> String {
         let calendar = Calendar.current
@@ -375,7 +392,7 @@ struct DayConfigView: View {
 struct ProfileSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage(SettingsKeys.userName) private var userName = "Nadia"
+    @AppStorage(SettingsKeys.userName) private var userName = L.Settings.defaultUserName
     @AppStorage(SettingsKeys.userEmail) private var userEmail = ""
     @AppStorage(SettingsKeys.babyName) private var babyName = ""
 
@@ -386,35 +403,35 @@ struct ProfileSheet: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: "My profile", enabled: !name.isBlank,
+                SheetHeader(title: L.Settings.profileTitle, enabled: !name.isBlank,
                             onCancel: { dismiss() }, onConfirm: save)
 
                 Circle()
                     .fill(Theme.rosePillBg)
                     .frame(width: 86, height: 86)
                     .overlay {
-                        Text(name.isBlank ? "?" : String(name.prefix(1)))
+                        Text(name.isBlank ? L.Settings.profileInitialFallback : String(name.prefix(1)))
                             .font(.baloo(30, heavy: true))
                             .foregroundStyle(Theme.roseLabel)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 22)
 
-                SectionLabel("YOU").padding(.top, 22).padding(.bottom, 8)
+                SectionLabel(L.Settings.profileSectionYou).padding(.top, 22).padding(.bottom, 8)
                 SoftCard {
                     VStack(spacing: 0) {
-                        field("Your name", $name)
+                        field(L.Settings.profileName, $name)
                         CardDivider()
-                        field("Email", $email, keyboard: .emailAddress)
+                        field(L.Settings.profileEmail, $email, keyboard: .emailAddress)
                     }
                 }
 
-                SectionLabel("BABY").padding(.top, 20).padding(.bottom, 8)
+                SectionLabel(L.Settings.profileSectionBaby).padding(.top, 20).padding(.bottom, 8)
                 SoftCard {
-                    field("Baby's name", $baby)
+                    field(L.Settings.profileBabyName, $baby)
                 }
 
-                Text("Your community posts show your first name only.")
+                Text(L.Settings.profileHint)
                     .font(.nunito(11.5, .semibold))
                     .lineSpacing(4)
                     .foregroundStyle(Theme.inkFaint)
@@ -460,18 +477,22 @@ struct FeedbackSheet: View {
     var onSent: (String) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
-    @State private var kind = "Idea"
+    @State private var kind = L.Settings.feedbackKindIdea
     @State private var text = ""
 
-    private let kinds = ["Idea", "Something's broken", "Just saying hi"]
+    private let kinds = [
+        L.Settings.feedbackKindIdea,
+        L.Settings.feedbackKindBroken,
+        L.Settings.feedbackKindHi,
+    ]
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: "Send feedback", confirm: "Send", enabled: !text.isBlank,
+                SheetHeader(title: L.Settings.feedbackTitle, confirm: L.Settings.feedbackSend, enabled: !text.isBlank,
                             onCancel: { dismiss() }, onConfirm: send)
 
-                Text("Tell us what's working and what isn't. A real person reads every note.")
+                Text(L.Settings.feedbackBlurb)
                     .font(.nunito(13.5, .semibold))
                     .lineSpacing(5)
                     .foregroundStyle(Theme.inkBody)
@@ -479,7 +500,7 @@ struct FeedbackSheet: View {
                     .padding(.top, 18)
                     .padding(.horizontal, 2)
 
-                SectionLabel("WHAT KIND?").padding(.top, 20).padding(.bottom, 8)
+                SectionLabel(L.Settings.feedbackKindLabel).padding(.top, 20).padding(.bottom, 8)
                 FlowRow(spacing: 8) {
                     ForEach(kinds, id: \.self) { k in
                         ChipButton(label: k, selected: kind == k, fills: false) { kind = k }
@@ -487,14 +508,14 @@ struct FeedbackSheet: View {
                 }
 
                 SoftCard(padding: .init(top: 14, leading: 18, bottom: 14, trailing: 18)) {
-                    TextField("Write as much or as little as you like.", text: $text, axis: .vertical)
+                    TextField(L.Settings.feedbackPlaceholder, text: $text, axis: .vertical)
                         .lineLimit(6...)
                         .font(.nunito(14, .bold))
                         .foregroundStyle(Theme.ink)
                 }
                 .padding(.top, 16)
 
-                Text("Sent with app version \(AppInfo.version) so we know what you were using.")
+                Text(L.Settings.feedbackVersionNote(AppInfo.version))
                     .font(.nunito(11.5, .semibold))
                     .lineSpacing(4)
                     .foregroundStyle(Theme.inkFaint)
@@ -513,7 +534,7 @@ struct FeedbackSheet: View {
     private func send() {
         guard !text.isBlank else { return }
         dismiss()
-        onSent("Thank you — feedback sent")
+        onSent(L.Settings.feedbackToast)
     }
 }
 

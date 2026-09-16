@@ -1,6 +1,24 @@
 import SwiftUI
 import CoreData
 
+/// Discussion topics. The raw value is written to `VillageThread.topic`, so it
+/// stays in English; `label` is what the chips and pills show.
+enum VillageTopic {
+    static let nights = "Nights"
+    static let feeding = "Feeding"
+    static let meTime = "Me-time"
+
+    static let all = [nights, feeding, meTime]
+
+    static func label(_ value: String) -> String {
+        switch value {
+        case feeding: return L.Village.topicFeeding
+        case meTime: return L.Village.topicMeTime
+        default: return L.Village.topicNights
+        }
+    }
+}
+
 /// The community tab: discussions other mums have started, with hugs instead of
 /// upvotes. No advice unless you ask — that's the house rule.
 struct VillageView: View {
@@ -14,13 +32,20 @@ struct VillageView: View {
     )
     private var threads: FetchedResults<VillageThread>
 
-    @State private var topic = "All"
+    /// Sentinel for "don't filter" — never stored on a thread.
+    private static let allTopics = ""
+
+    @State private var topic = VillageView.allTopics
     @State private var showingNewThread = false
 
-    static let topics = ["Nights", "Feeding", "Me-time"]
+    static let topics = VillageTopic.all
 
     private var shown: [VillageThread] {
-        topic == "All" ? Array(threads) : threads.filter { $0.topic == topic }
+        topic == Self.allTopics ? Array(threads) : threads.filter { $0.topic == topic }
+    }
+
+    private func topicLabel(_ value: String) -> String {
+        value == Self.allTopics ? L.Village.topicAll : VillageTopic.label(value)
     }
 
     var body: some View {
@@ -40,7 +65,7 @@ struct VillageView: View {
                 VillageThreadView(thread: thread, onToast: onToast)
             }
             .sheet(isPresented: $showingNewThread) {
-                NewThreadSheet(onPosted: { onToast("Discussion posted to the community") })
+                NewThreadSheet(onPosted: { onToast(L.Village.toastThreadPosted) })
             }
             .onAppear { VillageSeed.seedIfNeeded(in: context) }
         }
@@ -50,7 +75,7 @@ struct VillageView: View {
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Community")
+                Text(L.Village.title)
                     .font(.baloo(32))
                     .foregroundStyle(Theme.ink)
                 Text(countLine)
@@ -71,18 +96,15 @@ struct VillageView: View {
         }
     }
 
-    private var countLine: String {
-        let n = threads.count
-        return "\(n) discussion\(n == 1 ? "" : "s") · no advice unless you ask"
-    }
+    private var countLine: String { L.Village.countLine(threads.count) }
 
     private var topicChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(["All"] + Self.topics, id: \.self) { t in
+                ForEach([Self.allTopics] + Self.topics, id: \.self) { t in
                     let on = topic == t
                     Button { withAnimation(.easeInOut(duration: 0.18)) { topic = t } } label: {
-                        Text(t)
+                        Text(topicLabel(t))
                             .font(.nunito(12.5, .heavy))
                             .foregroundStyle(on ? .white : Theme.inkBody)
                             .padding(.horizontal, 15)
@@ -108,10 +130,10 @@ struct VillageView: View {
             }
             if shown.isEmpty {
                 VStack(spacing: 5) {
-                    Text("Nothing here yet")
+                    Text(L.Village.emptyTitle)
                         .font(.baloo(16, heavy: true))
                         .foregroundStyle(Theme.ink)
-                    Text("Be the first to start a \(topic.lowercased()) discussion.")
+                    Text(L.Village.emptyBody(topicLabel(topic).lowercased()))
                         .font(.nunito(12.5, .semibold))
                         .lineSpacing(5)
                         .foregroundStyle(Theme.inkFaint)
@@ -134,7 +156,7 @@ private struct ThreadCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                TopicPill(topic: thread.topic ?? "")
+                TopicPill(topic: VillageTopic.label(thread.topic ?? ""))
                 Text(thread.displayMeta)
                     .font(.nunito(11.5, .semibold))
                     .foregroundStyle(Theme.inkMuted)
@@ -156,7 +178,7 @@ private struct ThreadCard: View {
                 .padding(.top, 4)
             HStack(spacing: 14) {
                 countLabel("icon-message-grey", thread.replyCountLabel, Theme.inkBody)
-                countLabel("icon-heart", "\(thread.hugs) hugs", Theme.tileGlyph)
+                countLabel("icon-heart", L.Village.hugs(Int(thread.hugs)), Theme.tileGlyph)
             }
             .padding(.top, 11)
         }
@@ -175,7 +197,7 @@ private struct ThreadCard: View {
     private var preview: String {
         let body = thread.body ?? ""
         guard body.count > 92 else { return body }
-        return body.prefix(92).trimmingCharacters(in: .whitespaces) + "…"
+        return body.prefix(92).trimmingCharacters(in: .whitespaces) + L.Village.previewEllipsis
     }
 
     private func countLabel(_ asset: String, _ text: String, _ colour: Color) -> some View {
@@ -238,7 +260,7 @@ struct VillageThreadView: View {
 
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(SettingsKeys.userName) private var userName = "You"
+    @AppStorage(SettingsKeys.userName) private var userName = L.Village.anonymousAuthor
 
     @State private var draft = ""
 
@@ -253,7 +275,7 @@ struct VillageThreadView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     header
                     postCard.padding(.top, 16).padding(.horizontal, 18)
-                    Text("\(replies.count) REPLIES")
+                    Text(L.Village.replyCountHeading(replies.count))
                         .font(.nunito(12, .heavy))
                         .tracking(0.8)
                         .foregroundStyle(Theme.inkFaint)
@@ -274,7 +296,7 @@ struct VillageThreadView: View {
 
     private var header: some View {
         ZStack {
-            Text("Discussion")
+            Text(L.Village.detailTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(Theme.ink)
             HStack {
@@ -288,9 +310,9 @@ struct VillageThreadView: View {
     private var postCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Avatar(name: thread.author ?? "You")
+                Avatar(name: thread.author ?? L.Village.anonymousAuthor)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(thread.author ?? "You")
+                    Text(thread.author ?? L.Village.anonymousAuthor)
                         .font(.nunito(13.5, .heavy))
                         .foregroundStyle(Theme.ink)
                     Text(thread.displayMeta)
@@ -298,7 +320,7 @@ struct VillageThreadView: View {
                         .foregroundStyle(Theme.inkMuted)
                 }
                 Spacer(minLength: 0)
-                TopicPill(topic: thread.topic ?? "")
+                TopicPill(topic: VillageTopic.label(thread.topic ?? ""))
             }
             Text(thread.title ?? "")
                 .font(.baloo(19, heavy: true))
@@ -345,7 +367,7 @@ struct VillageThreadView: View {
     }
 
     private var hugLabel: String {
-        "\(thread.hugs) hugs" + (thread.hugged ? " · you too" : "")
+        L.Village.hugs(Int(thread.hugs)) + (thread.hugged ? L.Village.hugsYouToo : "")
     }
 
     private func toggleHug() {
@@ -359,8 +381,8 @@ struct VillageThreadView: View {
             ForEach(replies, id: \.objectID) { reply in
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 9) {
-                        Avatar(name: reply.author ?? "You", size: 28)
-                        Text(reply.author ?? "You")
+                        Avatar(name: reply.author ?? L.Village.anonymousAuthor, size: 28)
+                        Text(reply.author ?? L.Village.anonymousAuthor)
                             .font(.nunito(12.5, .heavy))
                             .foregroundStyle(Theme.ink)
                         Text(reply.displayWhen)
@@ -386,7 +408,7 @@ struct VillageThreadView: View {
 
     private func composer(_ proxy: ScrollViewProxy) -> some View {
         HStack(spacing: 9) {
-            TextField("Write a reply…", text: $draft)
+            TextField(L.Village.composerPlaceholder, text: $draft)
                 .font(.nunito(13.5, .bold))
                 .foregroundStyle(Theme.ink)
                 .textFieldStyle(.plain)
@@ -421,19 +443,19 @@ struct VillageThreadView: View {
     private func post(_ proxy: ScrollViewProxy) {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            onToast("Write a reply first")
+            onToast(L.Village.toastWriteReply)
             return
         }
         let reply = VillageReply(context: context)
         reply.id = UUID()
-        reply.author = userName.isEmpty ? "You" : userName
+        reply.author = userName.isEmpty ? L.Village.anonymousAuthor : userName
         reply.body = text
         reply.createdAt = Date()
         reply.thread = thread
         try? context.save()
 
         draft = ""
-        onToast("Reply posted")
+        onToast(L.Village.toastReplyPosted)
         withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
     }
 }
@@ -445,10 +467,10 @@ struct NewThreadSheet: View {
 
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(SettingsKeys.userName) private var userName = "You"
-    @AppStorage(SettingsKeys.babyAgeBand) private var babyAge = "0–6 months"
+    @AppStorage(SettingsKeys.userName) private var userName = L.Village.anonymousAuthor
+    @AppStorage(SettingsKeys.babyAgeBand) private var babyAge = AgeBandOption.zeroToSix
 
-    @State private var topic = "Nights"
+    @State private var topic = VillageTopic.nights
     @State private var title = ""
     @State private var body_ = ""
 
@@ -458,29 +480,29 @@ struct NewThreadSheet: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 SheetHeader(
-                    title: "New discussion",
-                    confirm: "Post",
+                    title: L.Village.newTitle,
+                    confirm: L.Village.newConfirm,
                     enabled: canPost,
                     onCancel: { dismiss() },
                     onConfirm: post
                 )
 
-                SectionLabel("TOPIC").padding(.top, 20).padding(.bottom, 8)
+                SectionLabel(L.Village.newTopic).padding(.top, 20).padding(.bottom, 8)
                 HStack(spacing: 8) {
                     ForEach(VillageView.topics, id: \.self) { t in
-                        ChipButton(label: t, selected: topic == t) { topic = t }
+                        ChipButton(label: VillageTopic.label(t), selected: topic == t) { topic = t }
                     }
                 }
 
-                SectionLabel("WHAT'S ON YOUR MIND?").padding(.top, 20).padding(.bottom, 8)
+                SectionLabel(L.Village.newPrompt).padding(.top, 20).padding(.bottom, 8)
                 VStack(spacing: 0) {
-                    TextField("Give it a title", text: $title)
+                    TextField(L.Village.newTitlePlaceholder, text: $title)
                         .font(.baloo(16, heavy: true))
                         .foregroundStyle(Theme.ink)
                         .padding(.vertical, 14)
                     Rectangle().fill(Theme.divider).frame(height: 1)
                     TextField(
-                        "Tell the community a bit more — what happened, what you need.",
+                        L.Village.newBodyPlaceholder,
                         text: $body_,
                         axis: .vertical
                     )
@@ -493,7 +515,7 @@ struct NewThreadSheet: View {
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
                 .shadow(color: Theme.softShadow, radius: 9, y: 5)
 
-                Text("Posts show your first name only. No advice unless you ask — that's the house rule.")
+                Text(L.Village.newFinePrint)
                     .font(.nunito(11.5, .semibold))
                     .lineSpacing(4)
                     .foregroundStyle(Theme.inkFaint)
@@ -513,11 +535,13 @@ struct NewThreadSheet: View {
         guard canPost else { return }
         let thread = VillageThread(context: context)
         thread.id = UUID()
-        thread.author = userName.split(separator: " ").first.map(String.init) ?? "You"
+        thread.author = userName.split(separator: " ").first.map(String.init) ?? L.Village.anonymousAuthor
         thread.topic = topic
         thread.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        thread.body = body_.isBlank ? "—" : body_.trimmingCharacters(in: .whitespacesAndNewlines)
-        thread.meta = "Baby \(babyAge) · just now"
+        thread.body = body_.isBlank
+            ? L.Village.emptyBodyPlaceholder
+            : body_.trimmingCharacters(in: .whitespacesAndNewlines)
+        thread.meta = L.Village.newMeta(AgeBandOption.label(babyAge))
         thread.hugs = 0
         thread.hugged = false
         thread.createdAt = Date()
@@ -542,28 +566,29 @@ enum VillageSeed {
         let now = Date()
         func hoursAgo(_ h: Double) -> Date { now.addingTimeInterval(-h * 3600) }
 
+        typealias Seed = L.Village.Seed
         let seeds: [(String, String, String, String, String, Int32, Double, [(String, String, Double)])] = [
-            ("Aina", "Baby 4 months · 2h ago", "Nights",
-             "Third night of 3am wake-ups",
-             "She settles in twenty minutes but I'm wide awake until five. Not looking for fixes — just needed to say it out loud somewhere that gets it.",
+            (Seed.ainaName, Seed.nightsMeta, VillageTopic.nights,
+             Seed.nightsTitle,
+             Seed.nightsBody,
              14, 2, [
-                ("Suraya", "Sitting with you. Week three of the same here. It does end, but that doesn't make tonight easier.", 1),
-                ("Mei", "Saying it out loud counts. Hope you get a long stretch tonight.", 0.67),
+                (Seed.surayaName, Seed.nightsReply1, 1),
+                (Seed.meiName, Seed.nightsReply2, 0.67),
              ]),
-            ("Suraya", "Baby 7 weeks · 5h ago", "Feeding",
-             "Combi feeding and the guilt finally lifted",
-             "Switched this week after six weeks of trying to do it all by breast. She's fed, she's growing, and I slept four hours straight for the first time. Posting in case someone needs permission.",
+            (Seed.surayaName, Seed.feedingMeta, VillageTopic.feeding,
+             Seed.feedingTitle,
+             Seed.feedingBody,
              22, 5, [
-                ("Hana", "I needed this today. Thank you for posting it.", 3),
-                ("Aina", "Fed is fed. Four hours is huge — hope tonight gives you another.", 2),
-                ("Priya", "Did your supply settle after? Asking because I'm a week behind you.", 1),
+                (Seed.hanaName, Seed.feedingReply1, 3),
+                (Seed.ainaName, Seed.feedingReply2, 2),
+                (Seed.priyaName, Seed.feedingReply3, 1),
              ]),
-            ("Mei", "Baby 9 months · yesterday", "Me-time",
-             "Booked 40 minutes for a walk with no pram",
-             "First time since January. Put it in the app as a block so nobody could claim the slot. Came home a different person. What's your smallest win this week?",
+            (Seed.meiName, Seed.meTimeMeta, VillageTopic.meTime,
+             Seed.meTimeTitle,
+             Seed.meTimeBody,
              31, 26, [
-                ("Aina", "A shower with the door closed. Genuinely.", 20),
-                ("Nurul", "Blocking the slot is the trick. If it isn't in the app someone else takes the hour.", 14),
+                (Seed.ainaName, Seed.meTimeReply1, 20),
+                (Seed.nurulName, Seed.meTimeReply2, 14),
              ]),
         ]
 
@@ -593,9 +618,9 @@ enum VillageSeed {
     }
 
     private static func relative(hours: Double) -> String {
-        if hours < 1 { return "\(Int(hours * 60))m ago" }
-        if hours < 24 { return "\(Int(hours))h ago" }
-        return "\(Int(hours / 24))d ago"
+        if hours < 1 { return L.Relative.minutesAgo(Int(hours * 60)) }
+        if hours < 24 { return L.Relative.hoursAgo(Int(hours)) }
+        return L.Relative.daysAgo(Int(hours / 24))
     }
 }
 
@@ -604,14 +629,11 @@ enum VillageSeed {
 extension VillageThread {
     /// Seeded posts carry a hand-written byline; posts you write age naturally.
     var displayMeta: String {
-        if let meta, !meta.isEmpty, author != "You" { return meta }
+        if let meta, !meta.isEmpty, author != L.Village.anonymousAuthor { return meta }
         return RelativeLabel.since(createdAt)
     }
 
-    var replyCountLabel: String {
-        let n = replies?.count ?? 0
-        return "\(n) \(n == 1 ? "reply" : "replies")"
-    }
+    var replyCountLabel: String { L.Village.replies(replies?.count ?? 0) }
 }
 
 extension VillageReply {
@@ -623,14 +645,14 @@ extension VillageReply {
 
 enum RelativeLabel {
     static func since(_ date: Date?) -> String {
-        guard let date else { return "just now" }
+        guard let date else { return L.Relative.justNow }
         let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
-        if minutes < 1 { return "just now" }
-        if minutes < 60 { return "\(minutes)m ago" }
+        if minutes < 1 { return L.Relative.justNow }
+        if minutes < 60 { return L.Relative.minutesAgo(minutes) }
         let hours = minutes / 60
-        if hours < 24 { return "\(hours)h ago" }
+        if hours < 24 { return L.Relative.hoursAgo(hours) }
         let days = hours / 24
-        return days == 1 ? "yesterday" : "\(days)d ago"
+        return days == 1 ? L.Relative.yesterday : L.Relative.daysAgo(days)
     }
 }
 

@@ -43,8 +43,8 @@ struct AppointmentsView: View {
                                 .contentShape(Rectangle())
                                 .onTapGesture { editing = appt }
                                 .contextMenu {
-                                    Button("Edit") { editing = appt }
-                                    Button("Delete", role: .destructive) { delete(appt) }
+                                    Button(L.Common.edit) { editing = appt }
+                                    Button(L.Common.delete, role: .destructive) { delete(appt) }
                                 }
                         }
                     }
@@ -73,7 +73,7 @@ struct AppointmentsView: View {
     }
 
     private var header: some View {
-        DetailHeader(title: "Appointment", onBack: { dismiss() }) {
+        DetailHeader(title: L.Appointments.title, onBack: { dismiss() }) {
             CircleAddButton { showingAdd = true }
         }
         .padding(.top, 8)
@@ -82,11 +82,11 @@ struct AppointmentsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Text("Nothing booked this day")
+            Text(L.Appointments.emptyTitle)
                 .font(.baloo(21, heavy: true))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
-            Text("Clinic visits, jabs, check-ups — add them here and they'll ride along in the plan you share.")
+            Text(L.Appointments.emptyBody)
                 .font(.nunito(14, .semibold))
                 .lineSpacing(6)
                 .foregroundStyle(Theme.inkFaint)
@@ -103,10 +103,10 @@ struct AppointmentsView: View {
     }
 
     private func delete(_ appointment: Appointment) {
-        let label = appointment.title ?? "Appointment"
+        let label = appointment.title ?? L.Appointments.fallbackName
         withAnimation { context.delete(appointment) }
         try? context.save()
-        showToast("\(label) removed")
+        showToast(L.Appointments.removed(label))
     }
 
     private func showToast(_ message: String) {
@@ -130,7 +130,7 @@ private struct AppointmentCard: View {
     private var subtitle: String {
         let time = (appointment.date ?? Date()).formatted(.dateTime.hour().minute())
         if let location = appointment.location, !location.isEmpty {
-            return "\(time) · \(location)"
+            return L.Appointments.cardSubtitle(time: time, location: location)
         }
         return time
     }
@@ -160,7 +160,7 @@ private struct AppointmentCard: View {
             Spacer(minLength: 0)
 
             Button(action: onRemove) {
-                Text("×")
+                Text(L.Glyph.remove)
                     .font(.nunito(13, .heavy))
                     .foregroundStyle(Color(hex: 0xB7AA9B))
                     .frame(width: 26, height: 26)
@@ -216,15 +216,15 @@ struct AppointmentSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
 
-                sectionLabel("APPOINTMENT").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Appointments.sectionAppointment).padding(.top, 20).padding(.bottom, 8)
                 detailsCard
 
-                sectionLabel("NOTES").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Appointments.sectionNotes).padding(.top, 20).padding(.bottom, 8)
                 notesCard
 
                 if isEditing {
                     Button(role: .destructive) { showingDeleteConfirmation = true } label: {
-                        Text("Delete appointment")
+                        Text(L.Appointments.deleteButton)
                             .font(.nunito(15, .bold))
                             .foregroundStyle(Color(hex: 0xC85C5C))
                             .frame(maxWidth: .infinity)
@@ -245,18 +245,18 @@ struct AppointmentSheet: View {
         .presentationBackground(AP.sheetBg)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $showingDatePicker) {
-            pickerSheet(title: "Date", components: .date, style: .graphical)
+            pickerSheet(title: L.Appointments.pickerDate, components: .date, style: .graphical)
         }
         .sheet(isPresented: $showingTimePicker) {
-            pickerSheet(title: "Time", components: .hourAndMinute, style: .wheel)
+            pickerSheet(title: L.Appointments.pickerTime, components: .hourAndMinute, style: .wheel)
         }
         .confirmationDialog(
-            "Delete this appointment?",
+            L.Appointments.deleteConfirm,
             isPresented: $showingDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) { deleteAppointment() }
-            Button("Cancel", role: .cancel) {}
+            Button(L.Common.delete, role: .destructive) { deleteAppointment() }
+            Button(L.Common.cancel, role: .cancel) {}
         }
     }
 
@@ -264,12 +264,12 @@ struct AppointmentSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(isEditing ? "Edit Appointment" : "New Appointment")
+            Text(isEditing ? L.Appointments.sheetEditTitle : L.Appointments.sheetNewTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(AP.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(AP.textSecondary)
                         .padding(.vertical, 8)
@@ -280,7 +280,7 @@ struct AppointmentSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : AP.disabledText)
                         .padding(.vertical, 8)
@@ -305,7 +305,7 @@ struct AppointmentSheet: View {
 
     private var detailsCard: some View {
         VStack(spacing: 0) {
-            TextField("Title (e.g. Baby checkup)", text: $title)
+            TextField(L.Appointments.titlePlaceholder, text: $title)
                 .font(.nunito(15, .bold))
                 .foregroundStyle(AP.textPrimary)
                 .tint(AP.accentRose)
@@ -315,7 +315,7 @@ struct AppointmentSheet: View {
             rowDivider
 
             HStack {
-                Text("Date & time").font(.nunito(15, .bold)).foregroundStyle(AP.textPrimary)
+                Text(L.Appointments.dateAndTime).font(.nunito(15, .bold)).foregroundStyle(AP.textPrimary)
                 Spacer()
                 pill(date.formatted(.dateTime.day().month(.abbreviated).year())) { showingDatePicker = true }
                 pill(date.formatted(.dateTime.hour().minute())) { showingTimePicker = true }
@@ -324,7 +324,7 @@ struct AppointmentSheet: View {
 
             rowDivider
 
-            TextField("Location (optional)", text: $location)
+            TextField(L.Appointments.locationPlaceholder, text: $location)
                 .font(.nunito(15, .bold))
                 .foregroundStyle(AP.textPrimary)
                 .tint(AP.accentRose)
@@ -338,7 +338,7 @@ struct AppointmentSheet: View {
     }
 
     private var notesCard: some View {
-        TextField("Anything to remember…", text: $notes, axis: .vertical)
+        TextField(L.Appointments.notesPlaceholder, text: $notes, axis: .vertical)
             .font(.nunito(15, .semibold))
             .foregroundStyle(AP.textPrimary)
             .tint(AP.accentRose)
@@ -378,7 +378,7 @@ struct AppointmentSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showingDatePicker = false; showingTimePicker = false }
+                        Button(L.Common.done) { showingDatePicker = false; showingTimePicker = false }
                             .tint(AP.accentRose)
                     }
                 }

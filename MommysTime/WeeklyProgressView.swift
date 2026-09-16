@@ -28,16 +28,13 @@ struct WeeklyProgressView: View {
     private var totalMinutes: Int { dayMinutes.reduce(0, +) }
 
     private func totalLabel(_ m: Int) -> String {
-        if m == 0 { return "0m" }
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+        m == 0 ? L.Duration.zeroMinutes : L.Duration.compact(m)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Progress")
+                Text(L.Progress.title)
                     .font(.baloo(30, heavy: true))
                     .foregroundStyle(PR.textPrimary)
                 Spacer()
@@ -47,7 +44,7 @@ struct WeeklyProgressView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("ME-TIME THIS WEEK")
+                    Text(L.Progress.weekLabel)
                         .font(.nunito(12, .heavy)).tracking(0.8)
                         .foregroundStyle(PR.textMuted)
                         .padding(.bottom, 8)
@@ -67,15 +64,13 @@ struct WeeklyProgressView: View {
     private var weekCard: some View {
         let minutes = dayMinutes
         let busiest = max(60, minutes.max() ?? 0)
-        let labels = ["M", "T", "W", "T", "F", "S", "S"]
+        let labels = L.CalendarCopy.weekdayInitials
 
         return VStack(alignment: .leading, spacing: 0) {
             Text(totalLabel(totalMinutes))
                 .font(.baloo(40, heavy: true))
                 .foregroundStyle(PR.roseAccent)
-            Text(totalMinutes > 0
-                 ? "Booked and yours. Protect it."
-                 : "This week is still young. Your time will come, mama.")
+            Text(totalMinutes > 0 ? L.Progress.booked : L.Progress.nothingYet)
                 .font(.nunito(14))
                 .lineSpacing(5)
                 .foregroundStyle(PR.bodyText)
@@ -110,7 +105,7 @@ struct WeeklyProgressView: View {
     }
 
     private var reassuranceNote: some View {
-        Text("No streaks, no guilt. Some weeks belong entirely to the kids — and that's okay. The app will keep finding pockets of time for you.")
+        Text(L.Progress.reassurance)
             .font(.nunito(13, .bold)).lineSpacing(6)
             .foregroundStyle(PR.noteText)
             .frame(maxWidth: .infinity, alignment: .leading)

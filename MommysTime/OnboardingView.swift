@@ -1,8 +1,56 @@
 import SwiftUI
 
-/// Full-screen 6-step onboarding: welcome · baby · day · track · care · done.
+// The three pickers onboarding writes to `AppStorage`. The raw values are
+// persisted, so they stay in English; `label` is what ends up on screen.
+
+enum AgeBandOption {
+    static let newborn = "Newborn"
+    static let zeroToSix = "0–6 months"
+    static let sixToTwelve = "6–12 months"
+    static let overOneYear = "1 year +"
+
+    static let all = [newborn, zeroToSix, sixToTwelve, overOneYear]
+
+    static func label(_ value: String) -> String {
+        switch value {
+        case newborn: return L.AgeBand.newborn
+        case sixToTwelve: return L.AgeBand.sixToTwelve
+        case overOneYear: return L.AgeBand.overOneYear
+        default: return L.AgeBand.zeroToSix
+        }
+    }
+}
+
+enum CaregiverRelation {
+    static let husband = "Husband"
+    static let wife = "Wife"
+    static let partner = "Partner"
+    static let mum = "Mum"
+    static let nanny = "Nanny"
+    static let grandma = "Grandma"
+    static let sitter = "Sitter"
+
+    static let all = [husband, wife, partner, mum, nanny]
+
+    static func label(_ value: String) -> String {
+        switch value {
+        case wife: return L.Relation.wife
+        case partner: return L.Relation.partner
+        case mum: return L.Relation.mum
+        case nanny: return L.Relation.nanny
+        case grandma: return L.Relation.grandma
+        case sitter: return L.Relation.sitter
+        default: return L.Relation.husband
+        }
+    }
+}
+
+/// Full-screen 6-step onboarding: language · welcome · baby · day · care · done.
 /// Nothing is mandatory — every input has a working default so the user can tap
 /// straight through. The flow writes through only on the final CTA.
+///
+/// Language is the exception, and the reason it goes first: it applies the
+/// moment it's tapped, so the rest of setup is already in her language.
 struct OnboardingView: View {
     @Environment(\.managedObjectContext) private var context
 
@@ -10,10 +58,9 @@ struct OnboardingView: View {
     @AppStorage(SettingsKeys.dayStartHour) private var dayStartHour = 6
     @AppStorage(SettingsKeys.dayEndHour) private var dayEndHour = 22
     @AppStorage(SettingsKeys.babyName) private var babyNameStore = ""
-    @AppStorage(SettingsKeys.babyAgeBand) private var ageBandStore = "0–6 months"
-    @AppStorage(SettingsKeys.trackers) private var trackersStore = "Pump,Feeds,Appointments"
+    @AppStorage(SettingsKeys.babyAgeBand) private var ageBandStore = AgeBandOption.zeroToSix
     @AppStorage(SettingsKeys.caregiverName) private var caregiverNameStore = ""
-    @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelationStore = "Husband"
+    @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelationStore = CaregiverRelation.husband
 
     /// Toast to raise on Home after skip/finish.
     var onExit: (String) -> Void = { _ in }
@@ -21,12 +68,11 @@ struct OnboardingView: View {
     // Working copies — persisted through only on finish.
     @State private var page = 0
     @State private var babyName = ""
-    @State private var ageBand = "0–6 months"
+    @State private var ageBand = AgeBandOption.zeroToSix
     @State private var startMin = 360      // 6:00 AM
     @State private var endMin = 1320       // 10:00 PM
-    @State private var trackers: Set<String> = ["Pump", "Feeds", "Appointments"]
     @State private var caregiverName = ""
-    @State private var relation = "Husband"
+    @State private var relation = CaregiverRelation.husband
     @FocusState private var focused: Bool
 
     private let total = 6
@@ -66,7 +112,7 @@ struct OnboardingView: View {
             Spacer()
 
             Button { skip() } label: {
-                Text("Skip")
+                Text(L.Onboarding.skip)
                     .font(.nunito(13, .heavy))
                     .foregroundStyle(OB.skipText)
                     .padding(.vertical, 8).padding(.horizontal, 14)
@@ -95,28 +141,38 @@ struct OnboardingView: View {
     @ViewBuilder
     private func body(for step: Int) -> some View {
         switch step {
-        case 0: welcomeStep
-        case 1: babyStep
-        case 2: dayStep
-        case 3: trackStep
+        case 0: languageStep
+        case 1: welcomeStep
+        case 2: babyStep
+        case 3: dayStep
         case 4: careStep
         default: doneStep
         }
     }
 
-    // MARK: - Step 1 · Welcome
+    // MARK: - Step 1 · Language
+
+    private var languageStep: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            heading(L.Language.title, L.Language.sub)
+            LanguageOptionList().padding(.top, 20)
+        }
+        .padding(.top, 20).padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 2 · Welcome
 
     private var welcomeStep: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                Text("WELCOME TO")
+                Text(L.Onboarding.welcomeEyebrow)
                     .font(.nunito(12, .heavy)).tracking(1.6)
                     .foregroundStyle(OB.roseAccent)
-                Text("Mommy's Time")
+                Text(L.App.name)
                     .font(.baloo(36, heavy: true))
                     .foregroundStyle(OB.textPrimary)
                     .padding(.top, 4)
-                Text("Nobody hands you a manual for the newborn months. This app holds the whole of it — the baby, the house, the money, and you.")
+                Text(L.Onboarding.welcomeBody)
                     .font(.nunito(15)).lineSpacing(6)
                     .foregroundStyle(OB.textMuted)
                     .multilineTextAlignment(.center)
@@ -124,9 +180,9 @@ struct OnboardingView: View {
             }
 
             VStack(spacing: 12) {
-                promiseCard("growth-log", "Know what's normal", "Feeds, sleep and growth, in plain numbers")
-                promiseCard("inventory", "Run the household", "Tasks, supplies, appointments, spending")
-                promiseCard("icon-users", "Never do it alone", "Ask other mothers, any hour of the night")
+                promiseCard("growth-log", L.Onboarding.promiseNormalTitle, L.Onboarding.promiseNormalSub)
+                promiseCard("inventory", L.Onboarding.promiseHouseholdTitle, L.Onboarding.promiseHouseholdSub)
+                promiseCard("icon-users", L.Onboarding.promiseAloneTitle, L.Onboarding.promiseAloneSub)
             }
             .padding(.top, 30)
         }
@@ -154,29 +210,29 @@ struct OnboardingView: View {
         .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 12, y: 4)
     }
 
-    // MARK: - Step 2 · Baby
+    // MARK: - Step 3 · Baby
 
     private var babyStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("Tell us about your baby", "Age sets what's normal for feeds, sleep and growth.")
-            nameCard(placeholder: "Baby's name", text: $babyName).padding(.top, 18)
-            fieldLabel("HOW OLD?").padding(.top, 20).padding(.bottom, 9)
-            chips(["Newborn", "0–6 months", "6–12 months", "1 year +"], selected: ageBand) { ageBand = $0 }
+            heading(L.Onboarding.babyTitle, L.Onboarding.babySub)
+            nameCard(placeholder: L.Onboarding.babyNamePlaceholder, text: $babyName).padding(.top, 18)
+            fieldLabel(L.Onboarding.babyAgeLabel).padding(.top, 20).padding(.bottom, 9)
+            chips(AgeBandOption.all, label: AgeBandOption.label, selected: ageBand) { ageBand = $0 }
         }
         .padding(.top, 20).padding(.horizontal, 24)
     }
 
-    // MARK: - Step 3 · Day
+    // MARK: - Step 4 · Day
 
     private var dayStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("When are you awake?", "Reminders and tasks stay inside these hours.")
+            heading(L.Onboarding.dayTitle, L.Onboarding.daySub)
             VStack(spacing: 0) {
-                dayRow("Starts", value: timeLabel(startMin),
+                dayRow(L.Onboarding.dayStarts, value: timeLabel(startMin),
                        onMinus: { startMin = max(240, startMin - 30) },
                        onPlus: { startMin = min(endMin - 120, startMin + 30) })
                 Rectangle().fill(OB.divider).frame(height: 1)
-                dayRow("Ends", value: timeLabel(endMin),
+                dayRow(L.Onboarding.dayEnds, value: timeLabel(endMin),
                        onMinus: { endMin = max(startMin + 120, endMin - 30) },
                        onPlus: { endMin = min(1410, endMin + 30) })
             }
@@ -185,7 +241,7 @@ struct OnboardingView: View {
             .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
             .padding(.top, 18)
 
-            note("That's \(onDutyLabel) on duty. Nothing will buzz outside it — nights are hard enough.")
+            note(L.Onboarding.dayNote(onDutyLabel))
                 .padding(.top, 14)
         }
         .padding(.top, 20).padding(.horizontal, 24)
@@ -197,11 +253,11 @@ struct OnboardingView: View {
             Spacer()
             HStack(spacing: 0) {
                 Button(action: onMinus) {
-                    Text("−").font(.nunito(16, .heavy)).foregroundStyle(OB.textSecondary).frame(width: 36, height: 32)
+                    Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(OB.textSecondary).frame(width: 36, height: 32)
                 }.buttonStyle(.plain)
                 Text(value).font(.nunito(13, .heavy)).foregroundStyle(OB.valueText).frame(minWidth: 84)
                 Button(action: onPlus) {
-                    Text("+").font(.nunito(16, .heavy)).foregroundStyle(OB.roseAccent).frame(width: 36, height: 32)
+                    Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(OB.roseAccent).frame(width: 36, height: 32)
                 }.buttonStyle(.plain)
             }
             .background(OB.fieldFill, in: Capsule())
@@ -209,55 +265,15 @@ struct OnboardingView: View {
         .padding(.vertical, 12)
     }
 
-    // MARK: - Step 4 · Track
-
-    private let trackOptions: [(String, String)] = [
-        ("Pump", "pump-tracker"), ("Feeds", "feed-log"), ("Growth", "growth-log"),
-        ("Inventory", "inventory"), ("Spending", "my-spending"), ("Appointments", "appointment"),
-    ]
-
-    private var trackStep: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            heading("What's on your plate?", "Baby or household — pick what you want on your home screen.")
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                ForEach(trackOptions, id: \.0) { name, asset in
-                    let on = trackers.contains(name)
-                    Button {
-                        if on { trackers.remove(name) } else { trackers.insert(name) }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(asset).renderingMode(.template).resizable().scaledToFit()
-                                .frame(width: 17, height: 17)
-                                .foregroundStyle(OB.glyphRose)
-                                .frame(width: 34, height: 34)
-                                .background(OB.tileFill, in: Circle())
-                            Text(name).font(.nunito(13.5, .heavy)).foregroundStyle(OB.textPrimary)
-                                .lineLimit(1).minimumScaleFactor(0.8)
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.vertical, 13).padding(.horizontal, 14)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 22))
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(on ? OB.roseCTA : .clear, lineWidth: 2))
-                        .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 12, y: 4)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.top, 16)
-        }
-        .padding(.top, 20).padding(.horizontal, 24)
-    }
-
     // MARK: - Step 5 · Care
 
     private var careStep: some View {
         VStack(alignment: .leading, spacing: 0) {
-            heading("Who's in your corner?", "One person you can hand something to on a bad day.")
-            nameCard(placeholder: "Their name", text: $caregiverName).padding(.top, 18)
-            fieldLabel("THEY ARE MY").padding(.top, 20).padding(.bottom, 9)
-            chips(["Husband", "Wife", "Partner", "Mum", "Nanny"], selected: relation) { relation = $0 }
-            note("Just for your own reference — no accounts, no invites, nothing sent.").padding(.top, 16)
+            heading(L.Onboarding.careTitle, L.Onboarding.careSub)
+            nameCard(placeholder: L.Onboarding.careNamePlaceholder, text: $caregiverName).padding(.top, 18)
+            fieldLabel(L.Onboarding.careRelationLabel).padding(.top, 20).padding(.bottom, 9)
+            chips(CaregiverRelation.all, label: CaregiverRelation.label, selected: relation) { relation = $0 }
+            note(L.Onboarding.careNote).padding(.top, 16)
         }
         .padding(.top, 20).padding(.horizontal, 24)
     }
@@ -267,11 +283,11 @@ struct OnboardingView: View {
     private var doneStep: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                Text(babyName.isBlank ? "You're ready" : "You and \(babyName.trimmed) are ready")
+                Text(babyName.isBlank ? L.Onboarding.doneTitle : L.Onboarding.doneTitleNamed(babyName.trimmed))
                     .font(.baloo(30, heavy: true))
                     .foregroundStyle(OB.textPrimary)
                     .multilineTextAlignment(.center)
-                Text("One day at a time from here. Change any of this in Settings.")
+                Text(L.Onboarding.doneSub)
                     .font(.nunito(14)).lineSpacing(6)
                     .foregroundStyle(OB.textMuted)
                     .multilineTextAlignment(.center)
@@ -279,10 +295,23 @@ struct OnboardingView: View {
             }
 
             VStack(spacing: 9) {
-                summaryRow("Baby", "\(babyName.isBlank ? "Not set" : babyName.trimmed) · \(ageBand)")
-                summaryRow("Your day", "\(timeLabel(startMin)) – \(timeLabel(endMin))")
-                summaryRow("Tracking", trackers.isEmpty ? "None yet" : "\(trackers.count) log\(trackers.count == 1 ? "" : "s")")
-                summaryRow("In my corner", caregiverName.isBlank ? "Nobody yet" : "\(caregiverName.trimmed) · \(relation)")
+                summaryRow(
+                    L.Onboarding.summaryBaby,
+                    L.Onboarding.summaryBabyValue(
+                        babyName.isBlank ? L.Onboarding.summaryNotSet : babyName.trimmed,
+                        AgeBandOption.label(ageBand)
+                    )
+                )
+                summaryRow(
+                    L.Onboarding.summaryDay,
+                    L.Onboarding.summaryDayValue(timeLabel(startMin), timeLabel(endMin))
+                )
+                summaryRow(
+                    L.Onboarding.summaryCorner,
+                    caregiverName.isBlank
+                        ? L.Onboarding.summaryNobody
+                        : L.Onboarding.summaryCornerValue(caregiverName.trimmed, CaregiverRelation.label(relation))
+                )
             }
             .padding(.top, 16)
         }
@@ -330,12 +359,17 @@ struct OnboardingView: View {
             .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
     }
 
-    private func chips(_ options: [String], selected: String, onSelect: @escaping (String) -> Void) -> some View {
+    private func chips(
+        _ options: [String],
+        label: @escaping (String) -> String,
+        selected: String,
+        onSelect: @escaping (String) -> Void
+    ) -> some View {
         FlowLayout(spacing: 9, lineSpacing: 9) {
             ForEach(options, id: \.self) { opt in
                 let sel = opt == selected
                 Button { onSelect(opt) } label: {
-                    Text(opt)
+                    Text(label(opt))
                         .font(.nunito(13.5, .heavy))
                         .foregroundStyle(sel ? .white : OB.chipIdleText)
                         .padding(.vertical, 11).padding(.horizontal, 17)
@@ -360,7 +394,7 @@ struct OnboardingView: View {
 
     private var primaryCTA: some View {
         Button(action: advance) {
-            Text(page == 0 ? "Show me how" : page == lastPage ? "Open my app" : "Continue")
+            Text(page == 1 ? L.Onboarding.ctaStart : page == lastPage ? L.Onboarding.ctaFinish : L.Onboarding.ctaContinue)
                 .font(.baloo(17))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -380,7 +414,6 @@ struct OnboardingView: View {
         ageBand = ageBandStore
         startMin = clampStart(dayStartHour * 60)
         endMin = max(startMin + 120, dayEndHour * 60)
-        trackers = Set(trackersStore.split(separator: ",").map(String.init).filter { !$0.isEmpty })
         caregiverName = caregiverNameStore
         relation = caregiverRelationStore
     }
@@ -395,7 +428,7 @@ struct OnboardingView: View {
     private func skip() {
         focused = false
         hasCompletedOnboarding = true
-        onExit("You can run setup again in Settings")
+        onExit(L.Onboarding.toastSkipped)
     }
 
     private func finish() {
@@ -404,12 +437,11 @@ struct OnboardingView: View {
         ageBandStore = ageBand
         dayStartHour = Int((Double(startMin) / 60).rounded())
         dayEndHour = Int((Double(endMin) / 60).rounded())
-        trackersStore = trackers.sorted().joined(separator: ",")
         caregiverNameStore = caregiverName
         caregiverRelationStore = relation
 
         hasCompletedOnboarding = true
-        onExit(babyName.isBlank ? "All set — welcome" : "All set — welcome, mama")
+        onExit(babyName.isBlank ? L.Onboarding.toastDone : L.Onboarding.toastDoneNamed)
     }
 
     private func timeLabel(_ minutes: Int) -> String {
@@ -421,7 +453,7 @@ struct OnboardingView: View {
     private var onDutyLabel: String {
         let m = endMin - startMin
         let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+        return r == 0 ? L.Duration.hours(h) : L.Duration.hoursMinutes(h, r)
     }
 }
 

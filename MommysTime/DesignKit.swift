@@ -44,10 +44,10 @@ struct ChipButton: View {
 /// Cancel · Title · Save row that opens every editing sheet.
 struct SheetHeader: View {
     let title: String
-    var confirm = "Save"
+    var confirm = L.Common.save
     var enabled = true
     var tint: Color = Theme.rose
-    var cancel = "Cancel"
+    var cancel = L.Common.cancel
     var onCancel: () -> Void
     var onConfirm: () -> Void
 
@@ -166,7 +166,7 @@ struct SoftStepper: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: onDecrement) {
-                Text("−")
+                Text(L.Glyph.minus)
                     .font(.nunito(16, .heavy))
                     .foregroundStyle(Theme.inkBody)
                     .frame(width: 36, height: 32)
@@ -177,7 +177,7 @@ struct SoftStepper: View {
                 .foregroundStyle(Theme.inkSoft)
                 .frame(minWidth: minWidth)
             Button(action: onIncrement) {
-                Text("+")
+                Text(L.Glyph.plus)
                     .font(.nunito(16, .heavy))
                     .foregroundStyle(tint)
                     .frame(width: 36, height: 32)

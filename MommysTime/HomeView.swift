@@ -45,7 +45,7 @@ struct HomeView: View {
                     header
                     tipCard.padding(.top, 10)
                     reminderPill.padding(.top, 8)
-                    Text("What would you like to do today?")
+                    Text(L.Home.prompt)
                         .font(.baloo(19))
                         .foregroundStyle(Theme.ink)
                         .padding(.top, 14)
@@ -88,7 +88,7 @@ struct HomeView: View {
                 Text(greeting)
                     .font(.nunito(13, .bold))
                     .foregroundStyle(Theme.inkMuted)
-                Text("Hello, mama")
+                Text(L.Home.hello)
                     .font(.baloo(32))
                     .foregroundStyle(Theme.ink)
             }
@@ -116,9 +116,9 @@ struct HomeView: View {
 
     private var greeting: String {
         switch Calendar.current.component(.hour, from: Date()) {
-        case ..<12: return "Good morning"
-        case ..<17: return "Good afternoon"
-        default: return "Good evening"
+        case ..<12: return L.Home.greetingMorning
+        case ..<17: return L.Home.greetingAfternoon
+        default: return L.Home.greetingEvening
         }
     }
 
@@ -131,7 +131,7 @@ struct HomeView: View {
                     .renderingMode(.original)
                     .resizable().scaledToFit()
                     .frame(width: 18, height: 18)
-                Text("TIP OF THE DAY")
+                Text(L.Home.tipLabel)
                     .font(.nunito(13, .heavy))
                     .tracking(1.1)
                     .foregroundStyle(Theme.tipLabel)
@@ -155,18 +155,11 @@ struct HomeView: View {
 
     private var tipOfTheDay: String {
         let day = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
-        return Self.tips[day % Self.tips.count]
+        // Read fresh rather than cached in a `static let` — that would pin the
+        // tip to whichever language the app first rendered in.
+        let tips = L.Home.tips
+        return tips[day % tips.count]
     }
-
-    private static let tips = [
-        "You can't pour from an empty cup. Ten minutes for you counts.",
-        "Rest is productive too. The laundry can wait a little longer.",
-        "A calm mama is the best gift for your little ones. Breathe.",
-        "Done is better than perfect — especially today.",
-        "Small pockets of me-time add up to a whole happier you.",
-        "It's okay to ask for help. You don't have to do it all alone.",
-        "Celebrate the tiny wins. You're doing more than you think.",
-    ]
 
     // MARK: Next-up reminder
 
@@ -196,10 +189,10 @@ struct HomeView: View {
     /// "Next: Pump session in **1h 11m**" — the countdown carries the darker ink.
     private var reminderText: Text {
         guard let next = nextEvent else {
-            return Text("Nothing else scheduled today — enjoy the calm.")
+            return Text(L.Home.reminderNothing)
                 .foregroundColor(Theme.reminderText)
         }
-        return Text("Next: \(next.title) ").foregroundColor(Theme.reminderText)
+        return Text(L.Home.reminderNext(next.title)).foregroundColor(Theme.reminderText)
             + Text(timeUntil(next.date)).foregroundColor(Theme.reminderStrong)
     }
 
@@ -207,33 +200,33 @@ struct HomeView: View {
     /// number you have to do arithmetic on; "in 1d 12h" isn't.
     private func timeUntil(_ date: Date) -> String {
         let minutes = max(0, Int(date.timeIntervalSinceNow / 60))
-        if minutes < 1 { return "now" }
-        if minutes < 60 { return "in \(minutes) min" }
+        if minutes < 1 { return L.Relative.now }
+        if minutes < 60 { return L.Relative.inMinutes(minutes) }
 
         let hours = minutes / 60
         if hours < 24 {
             let remainder = minutes % 60
-            return remainder == 0 ? "in \(hours)h" : "in \(hours)h \(remainder)m"
+            return remainder == 0 ? L.Relative.inHours(hours) : L.Relative.inHoursMinutes(hours, remainder)
         }
 
         let days = hours / 24
         let remainder = hours % 24
-        return remainder == 0 ? "in \(days)d" : "in \(days)d \(remainder)h"
+        return remainder == 0 ? L.Relative.inDays(days) : L.Relative.inDaysHours(days, remainder)
     }
 
     // MARK: Menu grid
 
     private var tileGrid: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 12) {
-            tile("Daily Task", "schedule-builder") { path.append(HomeDestination.schedule) }
-            tile("Appointment", "appointment") { path.append(HomeDestination.appointment) }
-            tile("Inventory", "inventory") { path.append(HomeDestination.inventory) }
-            tile("Pump Tracker", "pump-tracker") { path.append(HomeDestination.pump) }
-            tile("Feed Log", "feed-log") { path.append(HomeDestination.feed) }
-            tile("Growth Log", "growth-log") { path.append(HomeDestination.growth) }
-            tile("Wake Window", "wake-window", premium: true) { path.append(HomeDestination.wake) }
-            tile("Recipes", "recipes", premium: true) { path.append(HomeDestination.recipes) }
-            tile("My Spending", "my-spending", premium: true) { path.append(HomeDestination.spending) }
+            tile(L.Home.tileSchedule, "schedule-builder") { path.append(HomeDestination.schedule) }
+            tile(L.Home.tileAppointment, "appointment") { path.append(HomeDestination.appointment) }
+            tile(L.Home.tileInventory, "inventory") { path.append(HomeDestination.inventory) }
+            tile(L.Home.tilePump, "pump-tracker") { path.append(HomeDestination.pump) }
+            tile(L.Home.tileFeed, "feed-log") { path.append(HomeDestination.feed) }
+            tile(L.Home.tileGrowth, "growth-log") { path.append(HomeDestination.growth) }
+            tile(L.Home.tileWake, "wake-window", premium: true) { path.append(HomeDestination.wake) }
+            tile(L.Home.tileRecipes, "recipes", premium: true) { path.append(HomeDestination.recipes) }
+            tile(L.Home.tileSpending, "my-spending", premium: true) { path.append(HomeDestination.spending) }
         }
     }
 
@@ -249,16 +242,16 @@ struct HomeView: View {
                 SootheDisc(playing: on)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(on ? "Calming noise is playing" : "Baby won't settle?")
+                    Text(on ? L.Home.sootheOnTitle : L.Home.sootheOffTitle)
                         .font(.nunito(15.5, .heavy))
                         .foregroundStyle(Theme.roseAccentText)
-                    Text(on ? "Tap stop when baby settles" : "One tap plays calming white noise")
+                    Text(on ? L.Home.sootheOnSub : L.Home.sootheOffSub)
                         .font(.nunito(12, .semibold))
                         .foregroundStyle(Theme.roseMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(on ? "Stop" : "Play")
+                Text(on ? L.Home.sootheStop : L.Home.soothePlay)
                     .font(.nunito(13.5, .heavy))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18)
@@ -300,18 +293,18 @@ struct HomeView: View {
             .filter({ $0.1 > now })
             .sorted(by: { $0.1 < $1.1 })
             .first {
-            candidates.append((block.0.title ?? "your next block", block.1))
+            candidates.append((block.0.title ?? L.Home.nextBlockFallback, block.1))
         }
 
         if let appt = appointments.first(where: { ($0.date ?? .distantPast) > now }),
            let date = appt.date {
-            candidates.append((appt.title ?? "appointment", date))
+            candidates.append((appt.title ?? L.Home.nextAppointmentFallback, date))
         }
 
         if let lastPump = pumpSessions.first?.date {
             let nextPump = lastPump.addingTimeInterval(Double(pumpIntervalHours) * 3600)
             if nextPump > now {
-                candidates.append(("Pump session", nextPump))
+                candidates.append((L.Home.nextPumpSession, nextPump))
             }
         }
 
@@ -443,13 +436,13 @@ struct NotificationsSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                Text("Notifications")
+                Text(L.Notifications.title)
                     .font(.baloo(17, heavy: true))
                     .foregroundStyle(Theme.ink)
                 HStack {
                     Spacer()
                     Button { dismiss() } label: {
-                        Text("Done")
+                        Text(L.Common.done)
                             .font(.nunito(13, .heavy))
                             .foregroundStyle(Theme.roseText)
                             .padding(.horizontal, 16)
@@ -471,11 +464,11 @@ struct NotificationsSheet: View {
                     .frame(width: 34, height: 36)
                     .frame(width: 86, height: 86)
                     .background(Theme.peach, in: Circle())
-                Text("You're all caught up")
+                Text(L.Notifications.emptyTitle)
                     .font(.baloo(21, heavy: true))
                     .foregroundStyle(Theme.ink)
                     .padding(.top, 16)
-                Text("Reminders and gentle nudges will show up here.")
+                Text(L.Notifications.emptySub)
                     .font(.nunito(14, .semibold))
                     .lineSpacing(5)
                     .foregroundStyle(Theme.inkFaint)

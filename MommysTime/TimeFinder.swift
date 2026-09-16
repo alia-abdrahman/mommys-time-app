@@ -6,12 +6,32 @@ struct BlockInterval {
     let category: BlockCategory
 }
 
+/// Why a window scored the way it did. A case rather than a sentence so the
+/// sheet can branch on it without matching on translated copy.
+enum SlotReason: Equatable {
+    case longStretch(minutes: Int)
+    case quietTime
+    case afterBedtime
+    case afterBigChore
+    case freeMinutes(Int)
+
+    var text: String {
+        switch self {
+        case .longStretch(let minutes): return L.FindTime.reasonLongStretch(minutes)
+        case .quietTime: return L.FindTime.reasonQuiet
+        case .afterBedtime: return L.FindTime.reasonAfterBedtime
+        case .afterBigChore: return L.FindTime.reasonAfterChore
+        case .freeMinutes(let minutes): return L.FindTime.reasonFreeMinutes(minutes)
+        }
+    }
+}
+
 struct FreeSlot: Identifiable {
     let id = UUID()
     let start: Date
     let end: Date
     let score: Int
-    let reasons: [String]
+    let reasons: [SlotReason]
 
     var minutes: Int { Int(end.timeIntervalSince(start) / 60) }
 }
@@ -99,10 +119,10 @@ struct TimeFinder {
     private func score(gap: (start: Date, end: Date), blocks: [BlockInterval], bedtime: Date) -> FreeSlot {
         let minutes = Int(gap.end.timeIntervalSince(gap.start) / 60)
         var score = min(minutes, 120)
-        var reasons: [String] = []
+        var reasons: [SlotReason] = []
 
         if minutes >= 90 {
-            reasons.append("A lovely long stretch — \(minutes) minutes")
+            reasons.append(.longStretch(minutes: minutes))
         }
 
         let overlapsQuiet = blocks.contains {
@@ -110,12 +130,12 @@ struct TimeFinder {
         }
         if overlapsQuiet {
             score += 40
-            reasons.append("The kids are settled — quiet time 🌙")
+            reasons.append(.quietTime)
         }
 
         if gap.start >= bedtime {
             score += 30
-            reasons.append("After the kids' bedtime")
+            reasons.append(.afterBedtime)
         }
 
         let afterBigChore = blocks.contains { block in
@@ -126,11 +146,11 @@ struct TimeFinder {
         }
         if afterBigChore {
             score -= 15
-            reasons.append("Right after a big chore — maybe start with something light")
+            reasons.append(.afterBigChore)
         }
 
         if reasons.isEmpty {
-            reasons.append("\(minutes) free minutes just for you")
+            reasons.append(.freeMinutes(minutes))
         }
 
         return FreeSlot(start: gap.start, end: gap.end, score: score, reasons: reasons)

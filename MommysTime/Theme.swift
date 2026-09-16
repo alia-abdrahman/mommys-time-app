@@ -4,7 +4,13 @@ import CoreText
 /// Registers and exposes the design's exact typefaces — Baloo 2 for chunky
 /// headings, Nunito for body — bundled from the Avocation design file.
 enum AppFont {
+    /// Once per process — a language switch rebuilds `ContentView`, and
+    /// re-registering the same URLs only earns a console full of complaints.
+    private static var registered = false
+
     static func register() {
+        guard !registered else { return }
+        registered = true
         for name in ["Baloo2-Bold", "Baloo2-ExtraBold",
                      "Nunito-Regular", "Nunito-SemiBold", "Nunito-Bold", "Nunito-ExtraBold"] {
             guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { continue }

@@ -129,7 +129,7 @@ struct LogHistoryView: View {
     private var rowsCard: some View {
         VStack(spacing: 0) {
             if dayRows.isEmpty {
-                Text("Nothing logged on this day")
+                Text(L.History.empty)
                     .font(.nunito(13.5, .bold))
                     .foregroundStyle(Theme.inkFaint)
                     .frame(maxWidth: .infinity)
@@ -157,10 +157,10 @@ struct LogHistoryView: View {
                     .onTapGesture { onSelect?(row.id) }
                     .contextMenu {
                         if let onSelect {
-                            Button("Edit") { onSelect(row.id) }
+                            Button(L.Common.edit) { onSelect(row.id) }
                         }
                         if let onDelete {
-                            Button("Delete", role: .destructive) { onDelete(row.id) }
+                            Button(L.Common.delete, role: .destructive) { onDelete(row.id) }
                         }
                     }
                 }
@@ -203,9 +203,9 @@ struct GrowthHistoryView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                DetailHeader(title: "Growth History") { dismiss() }
+                DetailHeader(title: L.Growth.historyTitle) { dismiss() }
 
-                Text("Every measurement")
+                Text(L.Growth.historyHeading)
                     .font(.baloo(15, heavy: true))
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, 22)
@@ -214,7 +214,7 @@ struct GrowthHistoryView: View {
 
                 VStack(spacing: 0) {
                     if sorted.isEmpty {
-                        Text("No measurements logged yet")
+                        Text(L.Growth.historyEmpty)
                             .font(.nunito(13.5, .bold))
                             .foregroundStyle(Theme.inkFaint)
                             .frame(maxWidth: .infinity)
@@ -224,7 +224,7 @@ struct GrowthHistoryView: View {
                             if index > 0 { CardDivider() }
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(entry.date?.formatted(.dateTime.day().month(.abbreviated)) ?? "—")
+                                    Text(entry.date?.formatted(.dateTime.day().month(.abbreviated)) ?? L.Common.none)
                                         .font(.nunito(13, .heavy))
                                         .foregroundStyle(Theme.roseInk)
                                     Text(ageLabel(entry))
@@ -259,8 +259,8 @@ struct GrowthHistoryView: View {
     }
 
     private func detail(_ entry: GrowthEntry) -> String {
-        var parts = ["\(trim(entry.weightKg)) kg", "\(trim(entry.heightCm)) cm"]
-        if entry.headCm > 0 { parts.append("head \(trim(entry.headCm)) cm") }
+        var parts = [L.Growth.valueKg(trim(entry.weightKg)), L.Growth.valueCm(trim(entry.heightCm))]
+        if entry.headCm > 0 { parts.append(L.Growth.headDetail(trim(entry.headCm))) }
         return parts.joined(separator: " · ")
     }
 
@@ -268,7 +268,7 @@ struct GrowthHistoryView: View {
     private func ageLabel(_ entry: GrowthEntry) -> String {
         guard let birth = entries.compactMap(\.date).min(), let date = entry.date else { return "" }
         let months = Calendar.current.dateComponents([.month], from: birth, to: date).month ?? 0
-        return months <= 0 ? "Birth" : "\(months) mo"
+        return months <= 0 ? L.Growth.birth : L.Growth.months(months)
     }
 
     private func trim(_ value: Double) -> String {

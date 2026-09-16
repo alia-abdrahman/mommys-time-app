@@ -1,6 +1,12 @@
 import SwiftUI
 import CoreData
 
+/// The two states a `SleepEntry` can record. Persisted, so never translated.
+enum SleepEntryKind {
+    static let sleep = "sleep"
+    static let awake = "awake"
+}
+
 /// Awake or asleep in one tap. The hero counts the current stretch, every
 /// switch is written to the sleep log, and the chart button opens the summary.
 struct WakeWindowView: View {
@@ -33,7 +39,7 @@ struct WakeWindowView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     heroCard
 
-                    SectionLabel("TODAY SO FAR")
+                    SectionLabel(L.Wake.todaySoFar)
                         .padding(.top, 20)
                         .padding(.bottom, 8)
                     todayCard
@@ -61,7 +67,7 @@ struct WakeWindowView: View {
     // MARK: Header
 
     private var header: some View {
-        DetailHeader(title: "Wake Window", onBack: { dismiss() }) {
+        DetailHeader(title: L.Wake.title, onBack: { dismiss() }) {
             NavigationLink {
                 SleepSummaryView()
             } label: {
@@ -99,7 +105,7 @@ struct WakeWindowView: View {
                 .frame(width: 52, height: 52)
                 .background(asleep ? Color.white.opacity(0.2) : Color.white, in: Circle())
 
-            Text(asleep ? "Baby is sleeping" : "Baby is awake")
+            Text(asleep ? L.Wake.sleeping : L.Wake.awake)
                 .font(.baloo(22, heavy: true))
                 .foregroundStyle(asleep ? .white : Theme.roseInk)
                 .padding(.top, 10)
@@ -116,7 +122,7 @@ struct WakeWindowView: View {
                 .padding(.top, 6)
 
             Button(action: toggle) {
-                Text(asleep ? "Baby woke up" : "Baby fell asleep")
+                Text(asleep ? L.Wake.wokeUp : L.Wake.fellAsleep)
                     .font(.baloo(16, heavy: true))
                     .foregroundStyle(asleep ? Theme.plum : .white)
                     .frame(maxWidth: .infinity)
@@ -141,11 +147,11 @@ struct WakeWindowView: View {
     }
 
     private var subtitle: String {
-        if asleep { return "Asleep since \(since.formatted(.dateTime.hour().minute()))" }
+        if asleep { return L.Wake.asleepSince(since.formatted(.dateTime.hour().minute())) }
         if pastWindow {
-            return "Past the usual \(SleepFormat.span(Self.suggestedWindow)) window — nap soon"
+            return L.Wake.pastWindow(SleepFormat.span(Self.suggestedWindow))
         }
-        return "\(SleepFormat.span(max(0, Self.suggestedWindow - elapsed))) left of the usual window"
+        return L.Wake.windowLeft(SleepFormat.span(max(0, Self.suggestedWindow - elapsed)))
     }
 
     private var subtitleColour: Color {
@@ -160,7 +166,7 @@ struct WakeWindowView: View {
         if stamp > since, Calendar.current.isDate(stamp, inSameDayAs: since) {
             let entry = SleepEntry(context: context)
             entry.id = UUID()
-            entry.kind = asleep ? "sleep" : "awake"
+            entry.kind = asleep ? SleepEntryKind.sleep : SleepEntryKind.awake
             entry.start = since
             entry.end = stamp
             entry.createdAt = stamp
@@ -170,7 +176,7 @@ struct WakeWindowView: View {
         asleep.toggle()
         sinceStamp = stamp.timeIntervalSinceReferenceDate
         now = stamp
-        show(wasAsleep ? "Awake — window starts now" : "Sleeping — rest while you can")
+        show(wasAsleep ? L.Wake.toastAwake : L.Wake.toastAsleep)
     }
 
     private func show(_ message: String) {
@@ -189,7 +195,7 @@ struct WakeWindowView: View {
     private var todayCard: some View {
         VStack(spacing: 0) {
             if today.isEmpty {
-                Text("Nothing switched yet today")
+                Text(L.Wake.nothingToday)
                     .font(.nunito(13, .bold))
                     .foregroundStyle(Theme.inkFaint)
                     .frame(maxWidth: .infinity)
@@ -213,14 +219,18 @@ struct WakeWindowView: View {
     }
 
     private func row(_ entry: SleepEntry) -> some View {
-        let sleeping = entry.kind == "sleep"
+        let sleeping = entry.kind == SleepEntryKind.sleep
         let start = entry.start ?? Date()
         let end = entry.end ?? start
         return HStack(spacing: 11) {
             Circle()
                 .fill(sleeping ? Theme.plum : Theme.awakeDot)
                 .frame(width: 9, height: 9)
-            Text("\(sleeping ? "Slept" : "Awake") · \(start.formatted(.dateTime.hour().minute())) – \(end.formatted(.dateTime.hour().minute()))")
+            Text(L.Wake.row(
+                kind: sleeping ? L.Wake.slept : L.Wake.awakeRow,
+                start: start.formatted(.dateTime.hour().minute()),
+                end: end.formatted(.dateTime.hour().minute())
+            ))
                 .font(.nunito(13.5, .bold))
                 .foregroundStyle(Theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -248,22 +258,22 @@ struct SleepSummaryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(title: "Sleep Summary", onBack: { dismiss() })
+            DetailHeader(title: L.Sleep.summaryTitle, onBack: { dismiss() })
                 .padding(.top, 8)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    statRow(("\(SleepFormat.span(sleepMinutes))", "slept today"),
-                            ("\(naps.count)", "naps today"))
-                    statRow((averageWindow.map(SleepFormat.span) ?? "—", "avg wake window"),
-                            (longestNap.map(SleepFormat.span) ?? "—", "longest nap"))
+                    statRow((SleepFormat.span(sleepMinutes), L.Sleep.sleptToday),
+                            ("\(naps.count)", L.Sleep.napsToday))
+                    statRow((averageWindow.map(SleepFormat.span) ?? L.Common.none, L.Sleep.averageWindow),
+                            (longestNap.map(SleepFormat.span) ?? L.Common.none, L.Sleep.longestNap))
                         .padding(.top, 9)
 
-                    caption("The shape of the day", "Plum is sleep, cream is awake — 6am to midnight.")
+                    caption(L.Sleep.shapeTitle, L.Sleep.shapeSub)
                         .padding(.top, 18)
                     dayStripCard.padding(.top, 12)
 
-                    caption("Sleep this week", "Hours of sleep logged each day.")
+                    caption(L.Sleep.weekTitle, L.Sleep.weekSub)
                         .padding(.top, 18)
                     weekCard.padding(.top, 12)
 
@@ -292,7 +302,7 @@ struct SleepSummaryView: View {
     // MARK: Stats
 
     private var naps: [SleepEntry] {
-        entries.filter { $0.kind == "sleep" && calendar.isDateInToday($0.start ?? .distantPast) }
+        entries.filter { $0.kind == SleepEntryKind.sleep && calendar.isDateInToday($0.start ?? .distantPast) }
             .sorted { ($0.start ?? .distantPast) < ($1.start ?? .distantPast) }
     }
 
@@ -390,11 +400,11 @@ struct SleepSummaryView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             HStack {
-                ForEach(["6am", "11am", "4pm", "8pm", "12am"], id: \.self) { label in
+                ForEach(Array(L.Sleep.stripTicks.enumerated()), id: \.offset) { index, label in
                     Text(label)
                         .font(.nunito(9.5, .heavy))
                         .foregroundStyle(Theme.inkWhisper)
-                    if label != "12am" { Spacer() }
+                    if index < L.Sleep.stripTicks.count - 1 { Spacer() }
                 }
             }
             .padding(.top, 7)
@@ -418,7 +428,7 @@ struct SleepSummaryView: View {
         return (0..<7).reversed().compactMap { offset in
             guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { return nil }
             let minutes = entries
-                .filter { $0.kind == "sleep" && calendar.isDate($0.start ?? .distantPast, inSameDayAs: day) }
+                .filter { $0.kind == SleepEntryKind.sleep && calendar.isDate($0.start ?? .distantPast, inSameDayAs: day) }
                 .reduce(0) { $0 + $1.minutes }
             return (day, minutes)
         }
@@ -441,7 +451,7 @@ struct SleepSummaryView: View {
                     )
                     .fill(entry.minutes == 0 ? Theme.chartEmptyBar : (isToday ? Theme.plum : Theme.plumSoft))
                     .frame(height: max(4, CGFloat(entry.minutes) / CGFloat(peak) * 108))
-                    Text(isToday ? "Today" : entry.day.formatted(.dateTime.day()))
+                    Text(isToday ? L.Common.today : entry.day.formatted(.dateTime.day()))
                         .font(.nunito(10, .heavy))
                         .foregroundStyle(isToday ? Theme.plum : Theme.inkWhisper)
                 }
@@ -461,13 +471,10 @@ struct SleepSummaryView: View {
     }
 
     private var insight: String {
-        guard !naps.isEmpty else {
-            return "Log a sleep and a wake and this page starts learning your baby's rhythm."
-        }
+        guard !naps.isEmpty else { return L.Sleep.insightEmpty }
         let average = SleepFormat.span(sleepMinutes / naps.count)
         let window = SleepFormat.span(averageWindow ?? WakeWindowView.suggestedWindow)
-        return "Naps are averaging \(average) with about \(window) awake in between. "
-             + "Watching that window beats watching the clock."
+        return L.Sleep.insight(average: average, window: window)
     }
 }
 
@@ -477,14 +484,14 @@ enum SleepFormat {
     /// "55m" under the hour, "1h 25m" over it — the hero and row lengths.
     static func span(_ minutes: Int) -> String {
         let m = max(0, minutes)
-        guard m >= 60 else { return "\(m)m" }
-        return String(format: "%dh %02dm", m / 60, m % 60)
+        guard m >= 60 else { return L.Sleep.spanMinutes(m) }
+        return L.Sleep.spanHoursMinutes(m / 60, m % 60)
     }
 
     /// "3.5h" — the compact value above a weekly bar.
     static func hours(_ minutes: Int) -> String {
         let tenths = (Double(minutes) / 6).rounded() / 10
-        return "\(tenths)h"
+        return L.Sleep.hoursDecimal("\(tenths)")
     }
 }
 

@@ -53,7 +53,7 @@ struct CalendarDayCell: View {
 
 /// Mon–Sun initials above a calendar grid.
 struct WeekdayHeader: View {
-    private let heads = ["M", "T", "W", "T", "F", "S", "S"]
+    private let heads = L.CalendarCopy.weekdayInitials
 
     var body: some View {
         HStack(spacing: 2) {
@@ -69,7 +69,14 @@ struct WeekdayHeader: View {
 }
 
 enum CalendarMode: String, CaseIterable {
-    case week = "Week", month = "Month"
+    case week, month
+
+    var label: String {
+        switch self {
+        case .week: return L.CalendarCopy.week
+        case .month: return L.CalendarCopy.month
+        }
+    }
 }
 
 /// Grid maths shared by both calendars — weeks start on Monday.
@@ -142,7 +149,7 @@ struct ScheduleCalendarCard: View {
             ForEach(CalendarMode.allCases, id: \.self) { m in
                 let on = mode == m
                 Button { withAnimation(.easeInOut(duration: 0.18)) { mode = m } } label: {
-                    Text(m.rawValue)
+                    Text(m.label)
                         .font(.nunito(12.5, .heavy))
                         .foregroundStyle(on ? Theme.roseText : Theme.inkFaint)
                         .frame(maxWidth: .infinity)
@@ -208,8 +215,13 @@ struct ScheduleCalendarCard: View {
         let start = first.formatted(.dateTime.day())
         let end = last.formatted(.dateTime.day())
         return sameMonth
-            ? "\(start) – \(end) \(month)"
-            : "\(start) \(first.formatted(.dateTime.month(.abbreviated))) – \(end) \(month)"
+            ? L.CalendarCopy.rangeSameMonth(start: start, end: end, month: month)
+            : L.CalendarCopy.rangeAcrossMonths(
+                start: start,
+                startMonth: first.formatted(.dateTime.month(.abbreviated)),
+                end: end,
+                endMonth: month
+              )
     }
 
     private func shift(_ direction: Int) {

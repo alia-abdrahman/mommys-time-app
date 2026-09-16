@@ -11,6 +11,8 @@ enum SettingsKeys {
     static let pumpIntervalHours = "pumpIntervalHours"
     static let feedIntervalHours = "feedIntervalHours"
     static let isPremium = "isPremium"
+    /// An `AppLanguage` raw value — "system" unless she picked one herself.
+    static let appLanguage = "appLanguage"
 
     // Wake Window: which state the baby is in, and when it started.
     static let babyAsleep = "babyAsleep"
@@ -19,7 +21,6 @@ enum SettingsKeys {
     // Collected during onboarding
     static let babyName = "babyName"
     static let babyAgeBand = "babyAgeBand"
-    static let trackers = "trackers"
     static let goalTitle = "goalTitle"
     static let goalTarget = "goalTarget"
     static let caregiverName = "caregiverName"
@@ -37,11 +38,17 @@ enum AppTab: Hashable {
 }
 
 struct ContentView: View {
+    /// Owned by `RootView` so it outlives a language switch, which rebuilds
+    /// everything from here down.
+    @Binding var selectedTab: AppTab
+
+    @EnvironmentObject private var language: LanguageStore
+
     @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
-    @State private var selectedTab = AppTab.home
     @State private var toast: String?
 
-    init() {
+    init(selectedTab: Binding<AppTab>) {
+        _selectedTab = selectedTab
         AppFont.register()
         // Warm "Avocation" skin behind SwiftUI Lists/Forms.
         UICollectionView.appearance().backgroundColor = UIColor(Theme.canvas)
@@ -76,7 +83,10 @@ struct ContentView: View {
             }
         }
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
+            // Covers don't reliably inherit environment objects — the language
+            // step needs the store, so hand it over explicitly.
             OnboardingView(onExit: showToast)
+                .environmentObject(language)
         }
     }
 
@@ -123,9 +133,9 @@ struct FloatingTabBar: View {
     }
 
     private let items = [
-        Item(tab: .home, symbol: "house", label: "Home"),
-        Item(tab: .village, symbol: "person.2", label: "Community"),
-        Item(tab: .settings, symbol: "gearshape", label: "Settings"),
+        Item(tab: .home, symbol: "house", label: L.Tabs.home),
+        Item(tab: .village, symbol: "person.2", label: L.Tabs.community),
+        Item(tab: .settings, symbol: "gearshape", label: L.Tabs.settings),
     ]
 
     var body: some View {
@@ -178,6 +188,7 @@ struct FloatingTabBar: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(selectedTab: .constant(.home))
+        .environmentObject(LanguageStore.shared)
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }

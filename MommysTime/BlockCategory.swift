@@ -9,13 +9,15 @@ enum BlockCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// `rawValue` is persisted to Core Data, so it stays in English; this is
+    /// what the user actually reads.
     var label: String {
         switch self {
-        case .kids: return "Kids"
-        case .chores: return "Chores"
-        case .appointment: return "Appointment"
-        case .quiet: return "Quiet time"
-        case .meTime: return "Me time"
+        case .kids: return L.Blocks.kids
+        case .chores: return L.Blocks.chores
+        case .appointment: return L.Blocks.appointment
+        case .quiet: return L.Blocks.quiet
+        case .meTime: return L.Blocks.meTime
         }
     }
 
@@ -48,16 +50,18 @@ struct BlockTemplate: Identifiable {
     let startMinute: Int
     let durationMinutes: Int
 
-    static let all: [BlockTemplate] = [
-        BlockTemplate(title: "School run", category: .kids, startHour: 7, startMinute: 15, durationMinutes: 45),
-        BlockTemplate(title: "School hours", category: .quiet, startHour: 8, startMinute: 0, durationMinutes: 300),
-        BlockTemplate(title: "Nap time", category: .quiet, startHour: 13, startMinute: 0, durationMinutes: 120),
-        BlockTemplate(title: "Cooking", category: .chores, startHour: 17, startMinute: 0, durationMinutes: 60),
-        BlockTemplate(title: "Kids' dinner & bath", category: .kids, startHour: 18, startMinute: 30, durationMinutes: 90),
-        BlockTemplate(title: "Bedtime routine", category: .kids, startHour: 20, startMinute: 0, durationMinutes: 60),
-        BlockTemplate(title: "Laundry", category: .chores, startHour: 10, startMinute: 0, durationMinutes: 45),
-        BlockTemplate(title: "Groceries", category: .chores, startHour: 11, startMinute: 0, durationMinutes: 60),
-    ]
+    // Computed, not stored: the titles are translated copy, and a `static let`
+    // would pin them to whichever language the app first rendered in.
+    static var all: [BlockTemplate] { [
+        BlockTemplate(title: L.Blocks.Template.schoolRun, category: .kids, startHour: 7, startMinute: 15, durationMinutes: 45),
+        BlockTemplate(title: L.Blocks.Template.schoolHours, category: .quiet, startHour: 8, startMinute: 0, durationMinutes: 300),
+        BlockTemplate(title: L.Blocks.Template.napTime, category: .quiet, startHour: 13, startMinute: 0, durationMinutes: 120),
+        BlockTemplate(title: L.Blocks.Template.cooking, category: .chores, startHour: 17, startMinute: 0, durationMinutes: 60),
+        BlockTemplate(title: L.Blocks.Template.dinnerBath, category: .kids, startHour: 18, startMinute: 30, durationMinutes: 90),
+        BlockTemplate(title: L.Blocks.Template.bedtimeRoutine, category: .kids, startHour: 20, startMinute: 0, durationMinutes: 60),
+        BlockTemplate(title: L.Blocks.Template.laundry, category: .chores, startHour: 10, startMinute: 0, durationMinutes: 45),
+        BlockTemplate(title: L.Blocks.Template.groceries, category: .chores, startHour: 11, startMinute: 0, durationMinutes: 60),
+    ] }
 }
 
 extension ScheduleBlock {

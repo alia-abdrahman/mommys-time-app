@@ -53,7 +53,7 @@ struct GoalsView: View {
 
     private var header: some View {
         HStack {
-            Text("My Goals")
+            Text(L.Goals.title)
                 .font(.baloo(30, heavy: true))
                 .foregroundStyle(GO.textPrimary)
             Spacer()
@@ -81,12 +81,12 @@ struct GoalsView: View {
                     .background(GO.roseFill, in: Circle())
                     .padding(.bottom, 16)
 
-                Text("What are you working on, mama?")
+                Text(L.Goals.emptyTitle)
                     .font(.baloo(21, heavy: true))
                     .foregroundStyle(GO.textPrimary)
                     .multilineTextAlignment(.center)
 
-                Text("Learning to stitch? A new language? Coding? Add a goal and the app will help you find time for it.")
+                Text(L.Goals.emptyBody)
                     .font(.nunito(14))
                     .lineSpacing(5)
                     .foregroundStyle(GO.textMuted)
@@ -94,7 +94,7 @@ struct GoalsView: View {
                     .padding(.top, 8)
 
                 Button { showingAddGoal = true } label: {
-                    Text("Add your first goal")
+                    Text(L.Goals.emptyCTA)
                         .font(.nunito(13.5, .heavy))
                         .foregroundStyle(GO.roseAccent)
                         .padding(.vertical, 12).padding(.horizontal, 22)
@@ -161,14 +161,14 @@ struct GoalRow: View {
                 .fill(swatchColor ?? GO.roseFill)
                 .frame(width: 44, height: 44)
                 .overlay {
-                    if swatchColor == nil { Text(goal.icon ?? "🌸").font(.system(size: 20)) }
+                    if swatchColor == nil { Text(goal.icon ?? L.Goals.defaultIcon).font(.system(size: 20)) }
                 }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(goal.name ?? "")
                     .font(.nunito(15.5, .heavy))
                     .foregroundStyle(GO.textPrimary)
-                Text("\(target)× a week · \(completed) done")
+                Text(L.Goals.rowMeta(target: target, completed: completed))
                     .font(.nunito(12, .bold))
                     .foregroundStyle(GO.textMuted)
             }
@@ -177,7 +177,7 @@ struct GoalRow: View {
             .onTapGesture { onTap?() }
 
             Button { onDelete?() } label: {
-                Text("×")
+                Text(L.Glyph.remove)
                     .font(.nunito(13, .heavy))
                     .foregroundStyle(GO.removeIcon)
                     .frame(width: 26, height: 26)
@@ -228,9 +228,9 @@ struct AddGoalSheet: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                sectionLabel("YOUR GOAL").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Goals.sectionGoal).padding(.top, 20).padding(.bottom, 8)
                 goalCard
-                sectionLabel("PICK AN ICON").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Goals.sectionIcon).padding(.top, 20).padding(.bottom, 8)
                 iconGrid
                 footerNote.padding(.top, 12)
             }
@@ -244,7 +244,7 @@ struct AddGoalSheet: View {
         .presentationDragIndicator(.hidden)
         .overlay(alignment: .bottom) {
             if nameToast {
-                Toast(text: "Name your goal first")
+                Toast(text: L.Goals.toastNeedsName)
                     .padding(.bottom, 40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -255,12 +255,12 @@ struct AddGoalSheet: View {
 
     private var header: some View {
         ZStack {
-            Text("New Goal")
+            Text(L.Goals.newTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(NG.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(NG.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -270,7 +270,7 @@ struct AddGoalSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : NG.disabledText)
                         .padding(.vertical, 8).padding(.horizontal, 18)
@@ -292,7 +292,7 @@ struct AddGoalSheet: View {
 
     private var goalCard: some View {
         VStack(spacing: 0) {
-            TextField("e.g. Learn to stitch", text: $name)
+            TextField(L.Goals.namePlaceholder, text: $name)
                 .font(.nunito(15, .bold)).foregroundStyle(NG.textPrimary).tint(NG.accentRose)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 14)
@@ -300,17 +300,17 @@ struct AddGoalSheet: View {
             Rectangle().fill(Color(hex: 0x7A6248).opacity(0.1)).frame(height: 1)
 
             HStack {
-                Text("Target: \(targetPerWeek)× a week")
+                Text(L.Goals.target(targetPerWeek))
                     .font(.nunito(15, .bold)).foregroundStyle(NG.textPrimary)
                 Spacer()
                 HStack(spacing: 0) {
                     Button { targetPerWeek = max(1, targetPerWeek - 1) } label: {
-                        Text("−").font(.nunito(16, .heavy)).foregroundStyle(NG.textSecondary).frame(width: 38, height: 34)
+                        Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(NG.textSecondary).frame(width: 38, height: 34)
                     }
                     .buttonStyle(.plain)
                     Rectangle().fill(Color(hex: 0x7A6248).opacity(0.18)).frame(width: 1, height: 18)
                     Button { targetPerWeek = min(7, targetPerWeek + 1) } label: {
-                        Text("+").font(.nunito(16, .heavy)).foregroundStyle(NG.accentPlus).frame(width: 38, height: 34)
+                        Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(NG.accentPlus).frame(width: 38, height: 34)
                     }
                     .buttonStyle(.plain)
                 }
@@ -346,7 +346,7 @@ struct AddGoalSheet: View {
     }
 
     private var footerNote: some View {
-        Text("Icon set to be drawn in the illustrated style — flat swatches shown as placeholders.")
+        Text(L.Goals.iconNote)
             .font(.nunito(11.5, .semibold)).lineSpacing(4)
             .foregroundStyle(NG.textMuted)
             .multilineTextAlignment(.center)
@@ -371,7 +371,7 @@ struct AddGoalSheet: View {
         goal.targetSessionsPerWeek = Int16(targetPerWeek)
         goal.createdAt = Date()
         try? context.save()
-        onSaved("Goal added")
+        onSaved(L.Goals.toastAdded)
         dismiss()
     }
 }
@@ -405,7 +405,7 @@ struct EditGoalSheet: View {
     init(goal: Goal) {
         self.goal = goal
         _name = State(initialValue: goal.name ?? "")
-        _icon = State(initialValue: goal.icon ?? "🌸")
+        _icon = State(initialValue: goal.icon ?? L.Goals.defaultIcon)
         _targetPerWeek = State(initialValue: max(Int(goal.targetSessionsPerWeek), 1))
         let week = Calendar.current.dateInterval(of: .weekOfYear, for: Date())
         let start = (week?.start ?? .distantPast) as NSDate
@@ -439,49 +439,47 @@ struct EditGoalSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("This week") {
+                Section(L.Goals.thisWeek) {
                     WeekBreakdownStrip(days: weekDates.map { ($0, count(on: $0)) })
-                    Text(totalThisWeek == 0
-                         ? "No sessions completed yet this week."
-                         : "\(totalThisWeek) \(totalThisWeek == 1 ? "session" : "sessions") completed this week — they add up here from every day.")
+                    Text(totalThisWeek == 0 ? L.Goals.weekEmpty : L.Goals.weekSummary(totalThisWeek))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Your goal") {
-                    TextField("e.g. Learn to stitch", text: $name)
-                    Stepper("Target: \(targetPerWeek)x a week", value: $targetPerWeek, in: 1...14)
+                Section(L.Goals.yourGoal) {
+                    TextField(L.Goals.namePlaceholder, text: $name)
+                    Stepper(L.Goals.targetStepper(targetPerWeek), value: $targetPerWeek, in: 1...14)
                 }
-                Section("Pick an icon") {
+                Section(L.Goals.pickIcon) {
                     GoalIconPicker(selection: $icon)
                 }
                 Section {
-                    Button("Delete goal", role: .destructive) {
+                    Button(L.Goals.deleteButton, role: .destructive) {
                         showingDeleteConfirmation = true
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("Edit goal")
+            .navigationTitle(L.Goals.editTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(L.Common.cancel) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button(L.Common.save) { save() }
                         .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
             .confirmationDialog(
-                "Delete this goal?",
+                L.Goals.deleteConfirm,
                 isPresented: $showingDeleteConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Delete", role: .destructive) { deleteGoal() }
-                Button("Cancel", role: .cancel) {}
+                Button(L.Common.delete, role: .destructive) { deleteGoal() }
+                Button(L.Common.cancel, role: .cancel) {}
             } message: {
-                Text("Your booked me-time stays on your schedule, but it won't count towards a goal any more.")
+                Text(L.Goals.deleteMessage)
             }
         }
     }
@@ -539,6 +537,7 @@ private struct WeekBreakdownStrip: View {
 private struct GoalIconPicker: View {
     @Binding var selection: String
 
+    /// Emoji — the same in every language.
     private let icons = ["🧵", "💻", "📚", "🎨", "🍰", "🏃‍♀️", "🌱", "✍️", "🎹", "🌸"]
 
     var body: some View {

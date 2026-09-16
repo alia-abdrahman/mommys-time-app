@@ -9,7 +9,7 @@ struct WeeklyBarChart: View {
     /// Millilitres per day, oldest first, ending today.
     let values: [Int]
     var tint: Color = Theme.rose
-    var unit = "ml"
+    var unit = L.Charts.defaultUnit
 
     private let calendar = Calendar.current
 
@@ -32,7 +32,7 @@ struct WeeklyBarChart: View {
                 Spacer()
                 // "peak 1 ml" on an all-zero week reads like a bug, so say the
                 // truthful thing instead.
-                Text(values.contains { $0 > 0 } ? "peak \(peak) \(unit)" : "nothing logged yet")
+                Text(values.contains { $0 > 0 } ? L.Charts.peak(peak, unit) : L.Charts.nothingLogged)
                     .font(.nunito(11.5, .heavy))
                     .foregroundStyle(Theme.roseAccentText)
             }
@@ -72,7 +72,7 @@ struct WeeklyBarChart: View {
             )
             .fill(value == 0 ? Theme.chartEmptyBar : (isToday ? tint : Theme.chartPastBar))
             .frame(height: height)
-            Text(isToday ? "Today" : (day?.formatted(.dateTime.day()) ?? ""))
+            Text(isToday ? L.Charts.today : (day?.formatted(.dateTime.day()) ?? ""))
                 .font(.nunito(10, .heavy))
                 .foregroundStyle(isToday ? Theme.roseAccentText : Theme.inkWhisper)
         }
@@ -139,7 +139,7 @@ struct TrendLineChart: View {
                 Text(latestLabel)
                     .font(.baloo(20, heavy: true))
                     .foregroundStyle(Theme.roseInk)
-                Text("latest · \(lastPointLabel)")
+                Text(L.Charts.latestOn(lastPointLabel))
                     .font(.nunito(11.5, .bold))
                     .foregroundStyle(Theme.inkFaint)
             }
@@ -243,19 +243,20 @@ struct TrendLineChart: View {
     }
 
     private var trendLabel: String {
-        guard let first = filled.first, let last = filled.last else { return "—" }
+        guard let first = filled.first, let last = filled.last else { return L.Common.none }
         let delta = (last - first * 1.0)
         let rounded = (delta * 10).rounded() / 10
-        return "\(rounded > 0 ? "+" : "")\(round1(rounded)) \(unit) this month"
+        let sign = rounded > 0 ? L.Charts.trendPlus : ""
+        return L.Charts.trend(sign + round1(rounded), unit)
     }
 
     private var latestLabel: String {
-        guard let last = points.sorted(by: { $0.date < $1.date }).last else { return "—" }
-        return "\(round1(last.value)) \(unit)"
+        guard let last = points.sorted(by: { $0.date < $1.date }).last else { return L.Common.none }
+        return L.Charts.latest(round1(last.value), unit)
     }
 
     private var lastPointLabel: String {
-        points.map(\.date).max()?.formatted(.dateTime.day().month(.abbreviated)) ?? "—"
+        points.map(\.date).max()?.formatted(.dateTime.day().month(.abbreviated)) ?? L.Common.none
     }
 
     private func round1(_ value: Double) -> String {

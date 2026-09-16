@@ -1,27 +1,42 @@
 import SwiftUI
 
+/// Which subscription is selected. A case rather than a string so the CTA and
+/// the fine print can't drift apart once the names are translated.
+enum PaywallPlan {
+    case monthly, yearly
+
+    var lowercasedName: String {
+        self == .yearly ? L.Paywall.planYearlyLower : L.Paywall.planMonthlyLower
+    }
+}
+
 struct PremiumPaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(SettingsKeys.isPremium) private var isPremium = false
 
     var onToast: (String) -> Void = { _ in }
 
-    @State private var plan = "Yearly"
+    @State private var plan = PaywallPlan.yearly
 
     private struct Perk { let asset, title, sub: String }
     /// Must stay in step with everything actually gated: the three starred tiles
     /// on Home and the Sync row in Settings.
     private let perks = [
-        Perk(asset: "wake-window", title: "Wake Window", sub: "Awake or asleep in one tap, with a sleep summary"),
-        Perk(asset: "recipes", title: "Recipes", sub: "One-pot meals for you, first foods for baby"),
-        Perk(asset: "my-spending", title: "My Spending", sub: "See where the baby budget actually goes"),
-        Perk(asset: "sync-to-cloud", title: "Sync to Cloud", sub: "Your logs backed up and on every device"),
+        Perk(asset: "wake-window", title: L.Paywall.perkWakeTitle, sub: L.Paywall.perkWakeSub),
+        Perk(asset: "recipes", title: L.Paywall.perkRecipesTitle, sub: L.Paywall.perkRecipesSub),
+        Perk(asset: "my-spending", title: L.Paywall.perkSpendingTitle, sub: L.Paywall.perkSpendingSub),
+        Perk(asset: "sync-to-cloud", title: L.Paywall.perkSyncTitle, sub: L.Paywall.perkSyncSub),
     ]
 
-    private struct Plan { let name, tag, sub, price: String }
+    private struct Plan: Identifiable {
+        let id: PaywallPlan
+        let name, tag, sub, price: String
+    }
     private let plans = [
-        Plan(name: "Monthly", tag: "", sub: "Cancel any time", price: "RM 9.90"),
-        Plan(name: "Yearly", tag: "SAVE 40%", sub: "RM 5.90 a month, billed once", price: "RM 70.80"),
+        Plan(id: .monthly, name: L.Paywall.planMonthly, tag: "",
+             sub: L.Paywall.planMonthlySub, price: L.Paywall.planMonthlyPrice),
+        Plan(id: .yearly, name: L.Paywall.planYearly, tag: L.Paywall.saveTag,
+             sub: L.Paywall.planYearlySub, price: L.Paywall.planYearlyPrice),
     ]
 
     var body: some View {
@@ -30,10 +45,10 @@ struct PremiumPaywallView: View {
                 header
                 heroCard.padding(.top, 18)
 
-                sectionLabel("WHAT YOU UNLOCK").padding(.top, 18).padding(.bottom, 8)
+                sectionLabel(L.Paywall.unlockLabel).padding(.top, 18).padding(.bottom, 8)
                 perkList
 
-                sectionLabel("CHOOSE A PLAN").padding(.top, 18).padding(.bottom, 8)
+                sectionLabel(L.Paywall.planLabel).padding(.top, 18).padding(.bottom, 8)
                 planCards
 
                 primaryCTA.padding(.top, 18)
@@ -54,14 +69,14 @@ struct PremiumPaywallView: View {
 
     private var header: some View {
         ZStack {
-            Text("Mommy's Time Premium")
+            Text(L.Paywall.title)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(PW.textPrimary)
             HStack {
                 Color.clear.frame(width: 64, height: 1)
                 Spacer()
                 Button { dismiss() } label: {
-                    Text("Close")
+                    Text(L.Common.close)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(PW.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -83,11 +98,11 @@ struct PremiumPaywallView: View {
                 .frame(width: 56, height: 56)
                 .background(.white, in: Circle())
                 .padding(.bottom, 10)
-            Text("A little more help, mama")
+            Text(L.Paywall.heroTitle)
                 .font(.baloo(22, heavy: true))
                 .foregroundStyle(PW.textPrimary)
                 .multilineTextAlignment(.center)
-            Text("\(perkCount) features that take the mental load off — yours for less than a tin of formula.")
+            Text(L.Paywall.heroSub(perkCount))
                 .font(.nunito(13.5, .semibold)).lineSpacing(5)
                 .foregroundStyle(PW.textMuted)
                 .multilineTextAlignment(.center)
@@ -100,7 +115,7 @@ struct PremiumPaywallView: View {
 
     /// Spelled out so the headline can't drift when a perk is added or removed.
     private var perkCount: String {
-        ["No", "One", "Two", "Three", "Four", "Five", "Six"][safe: perks.count] ?? "\(perks.count)"
+        L.Paywall.countWords[safe: perks.count] ?? "\(perks.count)"
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -141,9 +156,9 @@ struct PremiumPaywallView: View {
 
     private var planCards: some View {
         VStack(spacing: 9) {
-            ForEach(plans, id: \.name) { p in
-                let selected = p.name == plan
-                Button { plan = p.name } label: {
+            ForEach(plans) { p in
+                let selected = p.id == plan
+                Button { plan = p.id } label: {
                     HStack(spacing: 12) {
                         ZStack {
                             Circle().fill(selected ? PW.roseCTA : PW.radioIdle).frame(width: 22, height: 22)
@@ -186,7 +201,7 @@ struct PremiumPaywallView: View {
             HStack(spacing: 9) {
                 Image(systemName: isPremium ? "checkmark" : "sparkles")
                     .font(.system(size: 15, weight: .semibold))
-                Text(isPremium ? "You're all set" : "Start with \(plan.lowercased())")
+                Text(isPremium ? L.Paywall.ctaOwned : L.Paywall.cta(plan.lowercasedName))
                     .font(.baloo(16))
             }
             .foregroundStyle(.white)
@@ -199,9 +214,7 @@ struct PremiumPaywallView: View {
     }
 
     private var finePrint: some View {
-        Text(plan == "Yearly"
-             ? "RM 70.80 billed yearly. Cancel any time before renewal."
-             : "RM 9.90 billed monthly. Cancel any time.")
+        Text(plan == .yearly ? L.Paywall.finePrintYearly : L.Paywall.finePrintMonthly)
             .font(.nunito(11.5, .semibold)).lineSpacing(4)
             .foregroundStyle(PW.hintText)
             .multilineTextAlignment(.center)
@@ -209,8 +222,8 @@ struct PremiumPaywallView: View {
     }
 
     private var restoreLink: some View {
-        Button { onToast("No previous purchase found") } label: {
-            Text("Restore a purchase")
+        Button { onToast(L.Paywall.toastNoPurchase) } label: {
+            Text(L.Paywall.restore)
                 .font(.nunito(12.5, .heavy))
                 .foregroundStyle(PW.linkRose)
                 .frame(maxWidth: .infinity)
@@ -221,7 +234,7 @@ struct PremiumPaywallView: View {
     private func subscribe() {
         guard !isPremium else { return }
         isPremium = true
-        onToast("Premium unlocked — enjoy, mama")
+        onToast(L.Paywall.toastUnlocked)
         dismiss()
     }
 }

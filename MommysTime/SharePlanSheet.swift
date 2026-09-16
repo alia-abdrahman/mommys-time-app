@@ -1,9 +1,23 @@
 import SwiftUI
 import CoreData
 
+/// Which day's plan is being shared. View state only.
+enum PlanDay: CaseIterable {
+    case today, tomorrow
+
+    var label: String {
+        self == .today ? L.Common.today : L.Common.tomorrow
+    }
+
+    /// Possessive form for the "sent" toast — "Today's plan sent to …".
+    var possessive: String {
+        self == .today ? L.SharePlan.daySentToday : L.SharePlan.daySentTomorrow
+    }
+}
+
 struct SharePlanSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelation = "Husband"
+    @AppStorage(SettingsKeys.caregiverRelation) private var caregiverRelation = CaregiverRelation.husband
 
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \ScheduleBlock.startTime, ascending: true)],
@@ -19,14 +33,16 @@ struct SharePlanSheet: View {
 
     var onSent: (String) -> Void = { _ in }
 
-    @State private var day = "Today"
-    @State private var caregiver = "Husband"
+    @State private var day = PlanDay.today
+    @State private var caregiver = CaregiverRelation.husband
     @State private var showingShare = false
 
-    private let caregivers = ["Husband", "Grandma", "Sitter"]
+    private let caregivers = [
+        CaregiverRelation.husband, CaregiverRelation.grandma, CaregiverRelation.sitter,
+    ]
 
     private var chosenDate: Date {
-        if day == "Today" { return Date() }
+        if day == .today { return Date() }
         return Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     }
 
@@ -55,7 +71,7 @@ struct SharePlanSheet: View {
                 header
                 daySegments.padding(.top, 16)
                 previewCard.padding(.top, 14)
-                sectionLabel("SEND TO").padding(.top, 16).padding(.bottom, 8)
+                sectionLabel(L.SharePlan.sendTo).padding(.top, 16).padding(.bottom, 8)
                 caregiverChips
                 sendButton.padding(.top, 16)
                 finePrint.padding(.top, 10)
@@ -80,12 +96,12 @@ struct SharePlanSheet: View {
 
     private var header: some View {
         ZStack {
-            Text("Share the plan")
+            Text(L.SharePlan.title)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(SH.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(SH.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -103,10 +119,10 @@ struct SharePlanSheet: View {
 
     private var daySegments: some View {
         HStack(spacing: 4) {
-            ForEach(["Today", "Tomorrow"], id: \.self) { d in
+            ForEach(PlanDay.allCases, id: \.self) { d in
                 let sel = d == day
                 Button { withAnimation(.easeInOut(duration: 0.2)) { day = d } } label: {
-                    Text(d)
+                    Text(d.label)
                         .font(.nunito(13.5, .heavy))
                         .foregroundStyle(sel ? SH.textPrimary : SH.segIdleText)
                         .frame(maxWidth: .infinity)
@@ -140,7 +156,7 @@ struct SharePlanSheet: View {
             }
 
             if items.isEmpty {
-                Text("Nothing scheduled yet. Add a block or book some me-time and it'll appear here, ready to send.")
+                Text(L.SharePlan.emptyPreview)
                     .font(.nunito(13, .semibold)).lineSpacing(6)
                     .foregroundStyle(SH.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -161,7 +177,7 @@ struct SharePlanSheet: View {
                                 Text(item.title)
                                     .font(.nunito(14, .heavy))
                                     .foregroundStyle(SH.textPrimary)
-                                Text("\(durationLabel(item)) · \(item.category.label)")
+                                Text(L.SharePlan.itemMeta(durationLabel(item), item.category.label))
                                     .font(.nunito(11.5, .semibold))
                                     .foregroundStyle(SH.textMuted)
                             }
@@ -190,20 +206,16 @@ struct SharePlanSheet: View {
     }
 
     private var countLabel: String {
-        switch items.count {
-        case 0: return "empty"
-        case 1: return "1 item"
-        default: return "\(items.count) items"
-        }
+        items.isEmpty ? L.SharePlan.countEmpty : L.SharePlan.count(items.count)
     }
 
     private var askText: String {
-        guard let m = meTime else {
-            return "No me-time booked yet — book a window first and the ask writes itself."
-        }
-        let s = m.start.formatted(.dateTime.hour().minute())
-        let e = m.end.formatted(.dateTime.hour().minute())
-        return "Please cover \(s)–\(e) so I can take my \(durationLabel(m))."
+        guard let m = meTime else { return L.SharePlan.askEmpty }
+        return L.SharePlan.ask(
+            start: m.start.formatted(.dateTime.hour().minute()),
+            end: m.end.formatted(.dateTime.hour().minute()),
+            duration: durationLabel(m)
+        )
     }
 
     /// The plain-language summary handed to the OS share sheet — readable by a
@@ -211,14 +223,14 @@ struct SharePlanSheet: View {
     private func planText(_ day: Date) -> String {
         let calendar = Calendar.current
         let dayLabel = day.formatted(.dateTime.weekday(.wide).day().month())
-        var lines = ["🌸 Plan for \(dayLabel)", ""]
+        var lines = [L.SharePlan.exportHeading(dayLabel), ""]
 
         if !items.isEmpty {
-            lines.append("Schedule:")
+            lines.append(L.SharePlan.exportSchedule)
             for item in items {
                 let s = item.start.formatted(.dateTime.hour().minute())
                 let e = item.end.formatted(.dateTime.hour().minute())
-                lines.append("• \(s)–\(e)  \(item.title)")
+                lines.append(L.SharePlan.exportBlock(start: s, end: e, title: item.title))
             }
             lines.append("")
         }
@@ -227,30 +239,29 @@ struct SharePlanSheet: View {
             .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
             .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
         if !dayAppointments.isEmpty {
-            lines.append("Appointments:")
+            lines.append(L.SharePlan.exportAppointments)
             for appt in dayAppointments {
                 let time = appt.date?.formatted(.dateTime.hour().minute()) ?? ""
-                var line = "• \(time)  \(appt.title ?? "")"
-                if let location = appt.location, !location.isEmpty { line += " @ \(location)" }
+                var line = L.SharePlan.exportAppointment(time: time, title: appt.title ?? "")
+                if let location = appt.location, !location.isEmpty {
+                    line += L.SharePlan.exportAppointmentLocation(location)
+                }
                 lines.append(line)
             }
             lines.append("")
         }
 
         if items.isEmpty && dayAppointments.isEmpty {
-            lines.append("Nothing scheduled yet.")
+            lines.append(L.SharePlan.exportNothing)
             lines.append("")
         }
 
-        lines.append("Sent with love from MommysTime 💛")
+        lines.append(L.SharePlan.exportFooter)
         return lines.joined(separator: "\n")
     }
 
     private func durationLabel(_ item: Item) -> String {
-        let m = max(0, Int(item.end.timeIntervalSince(item.start) / 60))
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+        L.Duration.compact(max(0, Int(item.end.timeIntervalSince(item.start) / 60)))
     }
 
     private func sectionLabel(_ text: String) -> some View {
@@ -267,7 +278,7 @@ struct SharePlanSheet: View {
             ForEach(caregivers, id: \.self) { name in
                 let sel = name == caregiver
                 Button { caregiver = name } label: {
-                    Text(name)
+                    Text(CaregiverRelation.label(name))
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(sel ? .white : SH.textSecondary)
                         .padding(.vertical, 10).padding(.horizontal, 16)
@@ -287,7 +298,7 @@ struct SharePlanSheet: View {
             HStack(spacing: 9) {
                 Image(systemName: "paperplane")
                     .font(.system(size: 16, weight: .semibold))
-                Text("Send to \(caregiver)")
+                Text(L.SharePlan.sendButton(CaregiverRelation.label(caregiver)))
                     .font(.baloo(16))
             }
             .foregroundStyle(.white)
@@ -300,7 +311,7 @@ struct SharePlanSheet: View {
     }
 
     private var finePrint: some View {
-        Text("Sends a plain-language summary — no app needed on their side.")
+        Text(L.SharePlan.finePrint)
             .font(.nunito(11.5, .semibold)).lineSpacing(4)
             .foregroundStyle(SH.hintText)
             .multilineTextAlignment(.center)
@@ -308,7 +319,10 @@ struct SharePlanSheet: View {
     }
 
     private func finishSend() {
-        let message = "\(day == "Today" ? "Today's" : "Tomorrow's") plan sent to \(caregiver)"
+        let message = L.SharePlan.sentToast(
+            day: day.possessive,
+            caregiver: CaregiverRelation.label(caregiver)
+        )
         dismiss()
         onSent(message)
     }

@@ -81,7 +81,7 @@ struct TodayView: View {
     // MARK: Header
 
     private var header: some View {
-        DetailHeader(title: "Daily Task", onBack: { dismiss() }) {
+        DetailHeader(title: L.Schedule.title, onBack: { dismiss() }) {
             if isEditable {
                 CircleAddButton { showingAddBlock = true }
             } else {
@@ -98,11 +98,11 @@ struct TodayView: View {
     private var emptyState: some View {
         if isEditable {
             VStack(spacing: 14) {
-                Text("Your day is a blank page")
+                Text(L.Schedule.emptyTitle)
                     .font(.baloo(21, heavy: true))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
-                Text("Add your kids' routines, chores and appointments — then let the app find the pockets of time that belong to you.")
+                Text(L.Schedule.emptyBody)
                     .font(.nunito(14, .semibold))
                     .lineSpacing(6)
                     .foregroundStyle(Theme.inkFaint)
@@ -111,7 +111,7 @@ struct TodayView: View {
                 Button { showingAddBlock = true } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                        Text("Add your first block").font(.nunito(13, .heavy))
+                        Text(L.Schedule.emptyCTA).font(.nunito(13, .heavy))
                     }
                     .foregroundStyle(Theme.roseText)
                     .padding(.horizontal, 20)
@@ -127,11 +127,11 @@ struct TodayView: View {
             .padding(.top, 22)
         } else {
             VStack(spacing: 12) {
-                Text("Nothing was scheduled")
+                Text(L.Schedule.pastTitle)
                     .font(.baloo(24, heavy: true))
                     .foregroundStyle(Theme.ink)
                     .multilineTextAlignment(.center)
-                Text("This day is in the past and has no blocks to show.")
+                Text(L.Schedule.pastBody)
                     .font(.nunito(16))
                     .foregroundStyle(Theme.inkMuted)
                     .multilineTextAlignment(.center)
@@ -173,13 +173,7 @@ struct BlockCard: View {
         let s = start.formatted(.dateTime.hour().minute())
         let e = end.formatted(.dateTime.hour().minute())
         let minutes = max(0, Int(end.timeIntervalSince(start) / 60))
-        return "\(s) – \(e) · \(durationLabel(minutes))"
-    }
-
-    private func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+        return L.Schedule.blockTime(s, e, L.Duration.compact(minutes))
     }
 
     var body: some View {
@@ -206,7 +200,7 @@ struct BlockCard: View {
 
             if let onRemove {
                 Button(action: onRemove) {
-                    Text("×")
+                    Text(L.Glyph.remove)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(Color(hex: 0xB7AA9B))
                         .frame(width: 26, height: 26)

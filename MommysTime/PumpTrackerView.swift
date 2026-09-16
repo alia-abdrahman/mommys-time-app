@@ -1,8 +1,22 @@
 import SwiftUI
 import CoreData
 
+/// Which side was expressed. Raw values are written to `PumpSession.side`, so
+/// they stay in English; `label` is what the segmented control shows.
 enum PumpSide {
-    static let all = ["Left", "Right", "Both"]
+    static let left = "Left"
+    static let right = "Right"
+    static let both = "Both"
+
+    static let all = [left, right, both]
+
+    static func label(_ value: String) -> String {
+        switch value {
+        case left: return L.Pump.sideLeft
+        case right: return L.Pump.sideRight
+        default: return L.Pump.sideBoth
+        }
+    }
 }
 
 struct PumpTrackerView: View {
@@ -29,17 +43,17 @@ struct PumpTrackerView: View {
                     statsCard.padding(.top, 10)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Your pumping rhythm")
+                        Text(L.Pump.rhythmTitle)
                             .font(.baloo(19, heavy: true))
                             .foregroundStyle(Theme.ink)
-                        Text("A week at a glance — steady beats perfect.")
+                        Text(L.Pump.rhythmSub)
                             .font(.nunito(12.5, .semibold))
                             .foregroundStyle(Theme.inkFaint)
                     }
                     .padding(.top, 16)
                     .padding(.horizontal, 2)
 
-                    WeeklyBarChart(title: "ML PUMPED · LAST 7 DAYS", values: weekVolumes, tint: PT.blueAccent)
+                    WeeklyBarChart(title: L.Pump.chartTitle, values: weekVolumes, tint: PT.blueAccent)
                         .padding(.top, 14)
                 }
                 .padding(.top, 18)
@@ -70,7 +84,7 @@ struct PumpTrackerView: View {
 
     private var header: some View {
         ZStack {
-            Text("Pump Tracker")
+            Text(L.Pump.title)
                 .font(.baloo(19, heavy: true))
                 .foregroundStyle(PT.textPrimary)
             HStack {
@@ -108,15 +122,15 @@ struct PumpTrackerView: View {
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 6) {
-                Text("Pump every")
+                Text(L.Pump.every)
                     .font(.nunito(13, .bold))
                     .foregroundStyle(PT.blueMid)
                 Menu {
                     ForEach(1...6, id: \.self) { hours in
-                        Button("\(hours) hour\(hours == 1 ? "" : "s")") { intervalHours = hours }
+                        Button(L.Pump.intervalOption(hours)) { intervalHours = hours }
                     }
                 } label: {
-                    Text("\(intervalHours)h")
+                    Text(L.Pump.intervalPill(intervalHours))
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(PT.bluePill)
                         .padding(.vertical, 2)
@@ -129,7 +143,7 @@ struct PumpTrackerView: View {
             Button { showingLog = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.system(size: 15, weight: .bold))
-                    Text("Log a session").font(.baloo(16))
+                    Text(L.Pump.logCTA).font(.baloo(16))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -147,16 +161,16 @@ struct PumpTrackerView: View {
     }
 
     private var statusText: String {
-        guard let next = nextSessionDate else { return "Log your first session" }
-        if next <= Date() { return "Session due now" }
-        return "Next in \(countdown(to: next))"
+        guard let next = nextSessionDate else { return L.Pump.statusFirst }
+        if next <= Date() { return L.Pump.statusDue }
+        return L.Pump.statusNext(countdown(to: next))
     }
 
     private func countdown(to date: Date) -> String {
         let minutes = max(1, Int(date.timeIntervalSinceNow / 60))
-        if minutes < 60 { return "\(minutes)m" }
+        if minutes < 60 { return L.Pump.countdownMinutes(minutes) }
         let h = minutes / 60, m = minutes % 60
-        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+        return m == 0 ? L.Duration.hours(h) : L.Duration.hoursMinutes(h, m)
     }
 
     private var nextSessionDate: Date? {
@@ -171,18 +185,18 @@ struct PumpTrackerView: View {
             // Tapping the count opens the day-by-day history.
             NavigationLink {
                 LogHistoryView(
-                    title: "Session History",
+                    title: L.Pump.historyTitle,
                     entries: historyRows,
                     summary: daySummary,
                     onSelect: { id in editing = sessions.first { $0.objectID == id } },
                     onDelete: { id in sessions.first { $0.objectID == id }.map(delete) }
                 )
             } label: {
-                statColumn(value: "\(todaySessions.count)", label: "sessions today", linked: true)
+                statColumn(value: "\(todaySessions.count)", label: L.Pump.sessionsToday, linked: true)
             }
             .buttonStyle(.plain)
             Rectangle().fill(PT.divider).frame(width: 1)
-            statColumn(value: "\(todayML)", label: "ml today")
+            statColumn(value: "\(todayML)", label: L.Pump.mlToday)
         }
         .padding(12)
         .background(.white, in: RoundedRectangle(cornerRadius: 24))
@@ -235,24 +249,21 @@ struct PumpTrackerView: View {
             HistoryRow(
                 id: session.objectID,
                 time: session.date ?? .distantPast,
-                title: "\(session.side ?? "Both") side",
-                detail: "\(session.amountML) ml · \(durationLabel(Int(session.durationMinutes)))"
+                title: L.Pump.historyRowTitle(PumpSide.label(session.side ?? PumpSide.both)),
+                detail: L.Pump.historyRowDetail(
+                    ml: Int(session.amountML),
+                    duration: L.Duration.compact(Int(session.durationMinutes))
+                )
             )
         }
     }
 
     private func daySummary(_ day: Date) -> String {
         let list = sessions.filter { Calendar.current.isDate($0.date ?? .distantPast, inSameDayAs: day) }
-        guard !list.isEmpty else { return "no entries" }
+        guard !list.isEmpty else { return L.History.noEntries }
         let ml = list.reduce(0) { $0 + Int($1.amountML) }
-        let count = "\(list.count) \(list.count == 1 ? "SESSION" : "SESSIONS")"
-        return ml > 0 ? "\(count) · \(ml) ML" : count
-    }
-
-    private func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+        let count = L.Pump.summaryCount(list.count)
+        return ml > 0 ? L.Pump.summaryWithML(count, ml) : count
     }
 
     private func delete(_ session: PumpSession) {
@@ -306,7 +317,7 @@ struct PumpSessionSheet: View {
         _date = State(initialValue: session?.date ?? Date())
         _duration = State(initialValue: Int(session?.durationMinutes ?? 20))
         _amount = State(initialValue: Int(session?.amountML ?? 110))
-        _side = State(initialValue: session?.side ?? "Both")
+        _side = State(initialValue: session?.side ?? PumpSide.both)
     }
 
     private var isEditing: Bool { session != nil }
@@ -317,9 +328,9 @@ struct PumpSessionSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 volumeHero.padding(.top, 20)
-                sectionLabel("SIDE").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Pump.sectionSide).padding(.top, 20).padding(.bottom, 8)
                 sideSegments
-                sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Pump.sectionDetails).padding(.top, 20).padding(.bottom, 8)
                 detailsCard
                 footerNote.padding(.top, 14)
             }
@@ -337,12 +348,12 @@ struct PumpSessionSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(isEditing ? "Edit Session" : "Log Session")
+            Text(isEditing ? L.Pump.sheetEditTitle : L.Pump.sheetNewTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(LS.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(LS.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -352,7 +363,7 @@ struct PumpSessionSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : LS.disabledText)
                         .padding(.vertical, 8).padding(.horizontal, 18)
@@ -368,31 +379,31 @@ struct PumpSessionSheet: View {
 
     private var volumeHero: some View {
         VStack(spacing: 0) {
-            Text("Volume expressed")
+            Text(L.Pump.volumeLabel)
                 .font(.nunito(12, .bold))
                 .foregroundStyle(LS.blueMid)
             HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text("\(amount)")
                     .font(.baloo(42, heavy: true))
                     .foregroundStyle(LS.blueDeep)
-                Text("ml")
+                Text(L.Pump.unitML)
                     .font(.baloo(17, heavy: true))
                     .foregroundStyle(LS.blueMid)
             }
             .padding(.top, 4)
             HStack(spacing: 10) {
                 Button { amount = max(0, amount - 10) } label: {
-                    Text("−").font(.nunito(20, .heavy)).foregroundStyle(LS.blueMid)
+                    Text(L.Glyph.minus).font(.nunito(20, .heavy)).foregroundStyle(LS.blueMid)
                         .frame(width: 46, height: 46).background(.white, in: Circle())
                         .shadow(color: Color(hex: 0xBE5F78).opacity(0.12), radius: 12, y: 4)
                 }
                 .buttonStyle(.plain)
                 VStack(spacing: 0) {
-                    Text("10 ml"); Text("steps")
+                    Text(L.Pump.stepAmount); Text(L.Pump.stepCaption)
                 }
                 .font(.nunito(12, .bold)).foregroundStyle(LS.blueMid).frame(minWidth: 46)
                 Button { amount = min(500, amount + 10) } label: {
-                    Text("+").font(.nunito(20, .heavy)).foregroundStyle(.white)
+                    Text(L.Glyph.plus).font(.nunito(20, .heavy)).foregroundStyle(.white)
                         .frame(width: 46, height: 46).background(LS.blueAccent, in: Circle())
                         .shadow(color: LS.blueAccent.opacity(0.4), radius: 16, y: 6)
                 }
@@ -412,7 +423,7 @@ struct PumpSessionSheet: View {
             ForEach(PumpSide.all, id: \.self) { seg in
                 let sel = seg == side
                 Button { side = seg } label: {
-                    Text(seg)
+                    Text(PumpSide.label(seg))
                         .font(.nunito(13.5, .heavy))
                         .foregroundStyle(sel ? .white : LS.bluePill)
                         .frame(maxWidth: .infinity)
@@ -436,7 +447,7 @@ struct PumpSessionSheet: View {
     private var detailsCard: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Started").font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
+                Text(L.Pump.started).font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
                 Spacer()
                 stepper(value: date.formatted(.dateTime.hour().minute()),
                         onMinus: { date = date.addingTimeInterval(-15 * 60) },
@@ -447,9 +458,9 @@ struct PumpSessionSheet: View {
             rowDivider
 
             HStack {
-                Text("Duration").font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
+                Text(L.Pump.duration).font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
                 Spacer()
-                stepper(value: durationLabel(duration),
+                stepper(value: L.Duration.compact(duration),
                         onMinus: { duration = max(5, duration - 5) },
                         onPlus: { duration = min(90, duration + 5) })
             }
@@ -458,7 +469,7 @@ struct PumpSessionSheet: View {
             rowDivider
 
             HStack {
-                Text("Add to feed log too").font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
+                Text(L.Pump.alsoLogFeed).font(.nunito(15, .bold)).foregroundStyle(LS.textPrimary)
                 Spacer()
                 Button { addToFeed.toggle() } label: {
                     ZStack(alignment: addToFeed ? .trailing : .leading) {
@@ -480,12 +491,12 @@ struct PumpSessionSheet: View {
     private func stepper(value: String, onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
         HStack(spacing: 0) {
             Button(action: onMinus) {
-                Text("−").font(.nunito(16, .heavy)).foregroundStyle(LS.textSecondary).frame(width: 36, height: 32)
+                Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(LS.textSecondary).frame(width: 36, height: 32)
             }
             .buttonStyle(.plain)
             Text(value).font(.nunito(13, .heavy)).foregroundStyle(LS.valueText).frame(minWidth: 84)
             Button(action: onPlus) {
-                Text("+").font(.nunito(16, .heavy)).foregroundStyle(LS.blueAccent).frame(width: 36, height: 32)
+                Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(LS.blueAccent).frame(width: 36, height: 32)
             }
             .buttonStyle(.plain)
         }
@@ -508,18 +519,10 @@ struct PumpSessionSheet: View {
     }
 
     private var noteText: String {
-        if amount <= 0 {
-            return "Logging a dry session is fine — it still counts toward your rhythm."
-        }
+        if amount <= 0 { return L.Pump.noteDry }
         let nextDue = date.addingTimeInterval(Double(intervalHours) * 3600)
             .formatted(.dateTime.hour().minute())
-        return "That's \(amount) ml in \(durationLabel(duration)). Next session due around \(nextDue)."
-    }
-
-    private func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
+        return L.Pump.note(amount: amount, duration: L.Duration.compact(duration), nextDue: nextDue)
     }
 
     // MARK: Save
@@ -542,14 +545,14 @@ struct PumpSessionSheet: View {
             feed.id = UUID()
             feed.createdAt = Date()
             feed.date = date
-            feed.type = "Bottle"
+            feed.type = FeedType.bottle
             feed.amountML = Int32(amount)
-            feed.notes = "pumped"
+            feed.notes = L.Pump.pumpedNoteKey
         }
 
         try? context.save()
         if isNew {
-            onLogged(addToFeed ? "Session logged and added to feeds" : "Pump session logged")
+            onLogged(addToFeed ? L.Pump.toastLoggedWithFeed : L.Pump.toastLogged)
         }
         dismiss()
     }

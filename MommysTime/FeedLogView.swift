@@ -1,8 +1,22 @@
 import SwiftUI
 import CoreData
 
+/// How baby was fed. Raw values are written to `FeedSession.type`, so they stay
+/// in English; `label` is what the segmented control shows.
 enum FeedType {
-    static let all = ["Breast", "Bottle", "Solid"]
+    static let breast = "Breast"
+    static let bottle = "Bottle"
+    static let solid = "Solid"
+
+    static let all = [breast, bottle, solid]
+
+    static func label(_ value: String) -> String {
+        switch value {
+        case breast: return L.Feed.typeBreast
+        case solid: return L.Feed.typeSolid
+        default: return L.Feed.typeBottle
+        }
+    }
 }
 
 struct FeedLogView: View {
@@ -26,7 +40,7 @@ struct FeedLogView: View {
 
     /// ml today sums bottle volumes only — breast/solid contribute 0.
     private var todayML: Int {
-        todayFeeds.filter { $0.type == "Bottle" }.reduce(0) { $0 + Int($1.amountML) }
+        todayFeeds.filter { $0.type == FeedType.bottle }.reduce(0) { $0 + Int($1.amountML) }
     }
 
     var body: some View {
@@ -38,17 +52,17 @@ struct FeedLogView: View {
                     statsCard.padding(.top, 10)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("How feeding is going")
+                        Text(L.Feed.howTitle)
                             .font(.baloo(19, heavy: true))
                             .foregroundStyle(Theme.ink)
-                        Text("A week at a glance — fed is fed.")
+                        Text(L.Feed.howSub)
                             .font(.nunito(12.5, .semibold))
                             .foregroundStyle(Theme.inkFaint)
                     }
                     .padding(.top, 16)
                     .padding(.horizontal, 2)
 
-                    WeeklyBarChart(title: "ML FED · LAST 7 DAYS", values: weekVolumes, tint: FL.greenAccent)
+                    WeeklyBarChart(title: L.Feed.chartTitle, values: weekVolumes, tint: FL.greenAccent)
                         .padding(.top, 14)
                 }
                 .padding(.top, 18)
@@ -79,7 +93,7 @@ struct FeedLogView: View {
     }
 
     private var header: some View {
-        DetailHeader(title: "Feed Log") { dismiss() }
+        DetailHeader(title: L.Feed.title) { dismiss() }
             .padding(.top, 8)
     }
 
@@ -95,21 +109,21 @@ struct FeedLogView: View {
                 .background(.white, in: Circle())
                 .padding(.bottom, 10)
 
-            Text(feeds.first?.date.map { "Last feed \(relative($0))" } ?? "No feeds logged yet")
+            Text(feeds.first?.date.map { L.Feed.lastFeed(relative($0)) } ?? L.Feed.noneLogged)
                 .font(.baloo(19, heavy: true))
                 .foregroundStyle(FL.greenDeep)
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 6) {
-                Text("Feed every")
+                Text(L.Feed.every)
                     .font(.nunito(13, .bold))
                     .foregroundStyle(FL.greenMid)
                 Menu {
                     ForEach(1...6, id: \.self) { hours in
-                        Button("\(hours) hour\(hours == 1 ? "" : "s")") { intervalHours = hours }
+                        Button(L.Feed.intervalOption(hours)) { intervalHours = hours }
                     }
                 } label: {
-                    Text("\(intervalHours)h")
+                    Text(L.Feed.intervalPill(intervalHours))
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(Theme.roseAccentText)
                         .padding(.vertical, 2)
@@ -122,7 +136,7 @@ struct FeedLogView: View {
             Button { showingAdd = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "plus").font(.system(size: 15, weight: .bold))
-                    Text("Log a feed").font(.baloo(16))
+                    Text(L.Feed.logCTA).font(.baloo(16))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -143,18 +157,18 @@ struct FeedLogView: View {
             // Tapping the count opens the day-by-day history.
             NavigationLink {
                 LogHistoryView(
-                    title: "Feed History",
+                    title: L.Feed.historyTitle,
                     entries: historyRows,
                     summary: daySummary,
                     onSelect: { id in editing = feeds.first { $0.objectID == id } },
                     onDelete: { id in feeds.first { $0.objectID == id }.map(delete) }
                 )
             } label: {
-                statColumn(value: "\(todayFeeds.count)", label: "feeds today", linked: true)
+                statColumn(value: "\(todayFeeds.count)", label: L.Feed.feedsToday, linked: true)
             }
             .buttonStyle(.plain)
             Rectangle().fill(FL.divider).frame(width: 1)
-            statColumn(value: "\(todayML)", label: "ml today")
+            statColumn(value: "\(todayML)", label: L.Feed.mlToday)
         }
         .padding(12)
         .background(.white, in: RoundedRectangle(cornerRadius: 24))
@@ -195,7 +209,7 @@ struct FeedLogView: View {
             HistoryRow(
                 id: feed.objectID,
                 time: feed.date ?? .distantPast,
-                title: feed.type ?? "Feed",
+                title: feed.type.map(FeedType.label) ?? L.Feed.historyFallbackTitle,
                 detail: detailLabel(feed)
             )
         }
@@ -203,21 +217,21 @@ struct FeedLogView: View {
 
     /// Bottles read in ml, breast feeds in minutes and side, solids in grams.
     private func detailLabel(_ feed: FeedSession) -> String {
-        if feed.amountML > 0 { return "\(feed.amountML) ml" }
+        if feed.amountML > 0 { return L.Feed.detailML(Int(feed.amountML)) }
         if feed.durationMinutes > 0 {
-            let side = feed.side ?? ""
-            let mins = "\(feed.durationMinutes) min"
-            return side.isEmpty ? mins : "\(mins) · \(side)"
+            let mins = L.Feed.detailMinutes(Int(feed.durationMinutes))
+            guard let side = feed.side, !side.isEmpty else { return mins }
+            return L.Feed.detailMinutesSide(mins, PumpSide.label(side))
         }
-        return "—"
+        return L.Common.none
     }
 
     private func daySummary(_ day: Date) -> String {
         let list = feeds.filter { Calendar.current.isDate($0.date ?? .distantPast, inSameDayAs: day) }
-        guard !list.isEmpty else { return "no entries" }
+        guard !list.isEmpty else { return L.History.noEntries }
         let ml = list.reduce(0) { $0 + Int($1.amountML) }
-        let count = "\(list.count) \(list.count == 1 ? "FEED" : "FEEDS")"
-        return ml > 0 ? "\(count) · \(ml) ML" : count
+        let count = L.Feed.summaryCount(list.count)
+        return ml > 0 ? L.Feed.summaryWithML(count, ml) : count
     }
 
     private func delete(_ feed: FeedSession) {
@@ -227,11 +241,11 @@ struct FeedLogView: View {
 
     private func relative(_ date: Date) -> String {
         let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
-        if minutes < 1 { return "just now" }
-        if minutes < 60 { return "\(minutes) min ago" }
+        if minutes < 1 { return L.Relative.justNow }
+        if minutes < 60 { return L.Relative.minutesAgoLong(minutes) }
         let hours = minutes / 60
         let rem = minutes % 60
-        return rem == 0 ? "\(hours)h ago" : "\(hours)h \(rem)m ago"
+        return rem == 0 ? L.Relative.hoursAgo(hours) : L.Relative.hoursMinutesAgo(hours, rem)
     }
 }
 
@@ -269,11 +283,11 @@ struct FeedSheet: View {
     init(feed: FeedSession? = nil, onLogged: @escaping (String) -> Void = { _ in }) {
         self.feed = feed
         self.onLogged = onLogged
-        _type = State(initialValue: feed?.type ?? "Bottle")
+        _type = State(initialValue: feed?.type ?? FeedType.bottle)
         _date = State(initialValue: feed?.date ?? Date())
         _amount = State(initialValue: Int(feed?.amountML ?? 120))
         _duration = State(initialValue: Int(feed?.durationMinutes ?? 20))
-        _side = State(initialValue: feed?.side ?? "Both")
+        _side = State(initialValue: feed?.side ?? PumpSide.both)
         _finished = State(initialValue: feed?.finished ?? true)
     }
 
@@ -284,17 +298,17 @@ struct FeedSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
 
-                sectionLabel("FEED TYPE").padding(.top, 20).padding(.bottom, 8)
-                segments(options: FeedType.all, selection: type) { type = $0 }
+                sectionLabel(L.Feed.sectionType).padding(.top, 20).padding(.bottom, 8)
+                segments(options: FeedType.all, label: FeedType.label, selection: type) { type = $0 }
 
                 metricHero.padding(.top, 16)
 
-                if type == "Breast" {
-                    sectionLabel("SIDE").padding(.top, 20).padding(.bottom, 8)
-                    segments(options: ["Left", "Right", "Both"], selection: side) { side = $0 }
+                if type == FeedType.breast {
+                    sectionLabel(L.Feed.sectionSide).padding(.top, 20).padding(.bottom, 8)
+                    segments(options: PumpSide.all, label: PumpSide.label, selection: side) { side = $0 }
                 }
 
-                sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Feed.sectionDetails).padding(.top, 20).padding(.bottom, 8)
                 detailsCard
 
                 footerNote.padding(.top, 14)
@@ -313,12 +327,12 @@ struct FeedSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(isEditing ? "Edit Feed" : "Log Feed")
+            Text(isEditing ? L.Feed.sheetEditTitle : L.Feed.sheetNewTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(LF.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(LF.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -328,7 +342,7 @@ struct FeedSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(.white)
                         .padding(.vertical, 8).padding(.horizontal, 18)
@@ -346,12 +360,17 @@ struct FeedSheet: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func segments(options: [String], selection: String, onSelect: @escaping (String) -> Void) -> some View {
+    private func segments(
+        options: [String],
+        label: @escaping (String) -> String,
+        selection: String,
+        onSelect: @escaping (String) -> Void
+    ) -> some View {
         HStack(spacing: 8) {
             ForEach(options, id: \.self) { opt in
                 let sel = opt == selection
                 Button { onSelect(opt) } label: {
-                    Text(opt)
+                    Text(label(opt))
                         .font(.nunito(13.5, .heavy))
                         .foregroundStyle(sel ? .white : LF.greenText)
                         .frame(maxWidth: .infinity)
@@ -367,29 +386,29 @@ struct FeedSheet: View {
 
     private var metricEyebrow: String {
         switch type {
-        case "Breast": return "Time at the breast"
-        case "Solid": return "Portion offered"
-        default: return "Bottle volume"
+        case FeedType.breast: return L.Feed.eyebrowBreast
+        case FeedType.solid: return L.Feed.eyebrowSolid
+        default: return L.Feed.eyebrowBottle
         }
     }
     private var metricUnit: String {
         switch type {
-        case "Breast": return "min"
-        case "Solid": return "g"
-        default: return "ml"
+        case FeedType.breast: return L.Feed.unitMinutes
+        case FeedType.solid: return L.Feed.unitGrams
+        default: return L.Feed.unitML
         }
     }
-    private var metricValue: Int { type == "Breast" ? duration : amount }
+    private var metricValue: Int { type == FeedType.breast ? duration : amount }
     private var stepCaption: String {
         switch type {
-        case "Breast": return "5 min steps"
-        case "Solid": return "10 g steps"
-        default: return "10 ml steps"
+        case FeedType.breast: return L.Feed.stepBreast
+        case FeedType.solid: return L.Feed.stepSolid
+        default: return L.Feed.stepBottle
         }
     }
 
     private func stepMetric(_ delta: Int) {
-        if type == "Breast" {
+        if type == FeedType.breast {
             duration = min(90, max(5, duration + delta * 5))
         } else {
             amount = min(500, max(0, amount + delta * 10))
@@ -412,7 +431,7 @@ struct FeedSheet: View {
             .padding(.top, 4)
             HStack(spacing: 10) {
                 Button { stepMetric(-1) } label: {
-                    Text("−").font(.nunito(20, .heavy)).foregroundStyle(LF.greenMid)
+                    Text(L.Glyph.minus).font(.nunito(20, .heavy)).foregroundStyle(LF.greenMid)
                         .frame(width: 46, height: 46).background(.white, in: Circle())
                         .shadow(color: Color(hex: 0xBE5F78).opacity(0.12), radius: 12, y: 4)
                 }
@@ -420,7 +439,7 @@ struct FeedSheet: View {
                 Text(stepCaption)
                     .font(.nunito(12, .bold)).foregroundStyle(LF.greenMid).frame(minWidth: 46)
                 Button { stepMetric(1) } label: {
-                    Text("+").font(.nunito(20, .heavy)).foregroundStyle(.white)
+                    Text(L.Glyph.plus).font(.nunito(20, .heavy)).foregroundStyle(.white)
                         .frame(width: 46, height: 46).background(LF.greenAccent, in: Circle())
                         .shadow(color: LF.greenAccent.opacity(0.35), radius: 16, y: 6)
                 }
@@ -438,17 +457,17 @@ struct FeedSheet: View {
     private var detailsCard: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Time").font(.nunito(15, .bold)).foregroundStyle(LF.textPrimary)
+                Text(L.Feed.time).font(.nunito(15, .bold)).foregroundStyle(LF.textPrimary)
                 Spacer()
                 HStack(spacing: 0) {
                     Button { date = date.addingTimeInterval(-15 * 60) } label: {
-                        Text("−").font(.nunito(16, .heavy)).foregroundStyle(LF.textSecondary).frame(width: 36, height: 32)
+                        Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(LF.textSecondary).frame(width: 36, height: 32)
                     }
                     .buttonStyle(.plain)
                     Text(date.formatted(.dateTime.hour().minute()))
                         .font(.nunito(13, .heavy)).foregroundStyle(LF.valueText).frame(minWidth: 84)
                     Button { date = date.addingTimeInterval(15 * 60) } label: {
-                        Text("+").font(.nunito(16, .heavy)).foregroundStyle(LF.greenAccent).frame(width: 36, height: 32)
+                        Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(LF.greenAccent).frame(width: 36, height: 32)
                     }
                     .buttonStyle(.plain)
                 }
@@ -459,7 +478,7 @@ struct FeedSheet: View {
             Rectangle().fill(Color(hex: 0x7A6248).opacity(0.1)).frame(height: 1)
 
             HStack {
-                Text("Baby finished the feed").font(.nunito(15, .bold)).foregroundStyle(LF.textPrimary)
+                Text(L.Feed.finished).font(.nunito(15, .bold)).foregroundStyle(LF.textPrimary)
                 Spacer()
                 Button { finished.toggle() } label: {
                     ZStack(alignment: finished ? .trailing : .leading) {
@@ -491,9 +510,9 @@ struct FeedSheet: View {
 
     private var noteText: String {
         switch type {
-        case "Breast": return "Breast feeds are tracked by time and side, not volume."
-        case "Solid": return "Solids are logged by portion — handy once weaning starts."
-        default: return "Bottle volume counts toward today's ml total."
+        case FeedType.breast: return L.Feed.noteBreast
+        case FeedType.solid: return L.Feed.noteSolid
+        default: return L.Feed.noteBottle
         }
     }
 
@@ -507,12 +526,12 @@ struct FeedSheet: View {
         }
         target.type = type
         target.date = date
-        target.amountML = type == "Breast" ? 0 : Int32(amount)
-        target.durationMinutes = type == "Breast" ? Int32(duration) : 0
-        target.side = type == "Breast" ? side : nil
+        target.amountML = type == FeedType.breast ? 0 : Int32(amount)
+        target.durationMinutes = type == FeedType.breast ? Int32(duration) : 0
+        target.side = type == FeedType.breast ? side : nil
         target.finished = finished
         try? context.save()
-        if feed == nil { onLogged("\(type) feed logged") }
+        if feed == nil { onLogged(L.Feed.toastLogged(FeedType.label(type))) }
         dismiss()
     }
 }
