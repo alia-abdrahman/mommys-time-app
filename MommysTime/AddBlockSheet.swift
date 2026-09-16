@@ -9,6 +9,7 @@ struct AddBlockSheet: View {
     @State private var start: Date
     @State private var lengthMinutes = 60
     @State private var repeatsDaily = false
+    @State private var repeatsUntil: Date
     @State private var showTimePicker = false
     @State private var titleToast = false
 
@@ -26,6 +27,9 @@ struct AddBlockSheet: View {
             bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day
         ) ?? day
         _start = State(initialValue: base)
+        // A week of repeats is the useful default — long enough to be worth
+        // ticking, short enough that nobody has to clean it up later.
+        _repeatsUntil = State(initialValue: calendar.date(byAdding: .day, value: 6, to: day) ?? day)
     }
 
     private var canSave: Bool { !title.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -34,13 +38,15 @@ struct AddBlockSheet: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                sectionLabel("QUICK ADD").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.AddBlock.quickAdd).padding(.top, 20).padding(.bottom, 8)
                 chipRow
-                sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.AddBlock.details).padding(.top, 20).padding(.bottom, 8)
                 detailsCard
+                if repeatsDaily { recurNote.padding(.top, 10) }
             }
             .padding(.top, 18)
             .padding(.horizontal, 18)
+            .padding(.bottom, 24)
         }
         .background(AB.sheetBg)
         .presentationDetents([.large])
@@ -48,7 +54,7 @@ struct AddBlockSheet: View {
         .presentationDragIndicator(.hidden)
         .overlay(alignment: .bottom) {
             if titleToast {
-                Toast(text: "Give it a title first")
+                Toast(text: L.AddBlock.toastNeedsTitle)
                     .padding(.bottom, 40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -62,12 +68,12 @@ struct AddBlockSheet: View {
 
     private var header: some View {
         ZStack {
-            Text("Add to your day")
+            Text(L.AddBlock.title)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(AB.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(AB.textSecondary)
                         .padding(.vertical, 8)
@@ -80,7 +86,7 @@ struct AddBlockSheet: View {
                 Spacer()
 
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : AB.disabledText)
                         .padding(.vertical, 8)
@@ -125,7 +131,7 @@ struct AddBlockSheet: View {
     private var detailsCard: some View {
         VStack(spacing: 0) {
             // Row 1 — Title
-            TextField("Title (e.g. Nap time)", text: $title)
+            TextField(L.AddBlock.titlePlaceholder, text: $title)
                 .font(.nunito(15, .bold))
                 .foregroundStyle(AB.textPrimary)
                 .tint(AB.accentRose)
@@ -136,7 +142,7 @@ struct AddBlockSheet: View {
 
             // Row 2 — Starts
             HStack {
-                Text("Starts").font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
+                Text(L.AddBlock.starts).font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
                 Spacer()
                 Button { showTimePicker = true } label: {
                     Text(start, format: .dateTime.hour().minute())
@@ -154,7 +160,7 @@ struct AddBlockSheet: View {
 
             // Row 3 — Length
             HStack {
-                Text("Length").font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
+                Text(L.AddBlock.length).font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
                 Spacer()
                 stepper
             }
@@ -162,18 +168,96 @@ struct AddBlockSheet: View {
 
             rowDivider
 
-            // Row 4 — Repeats every day
-            HStack {
-                Text("Repeats every day").font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
-                Spacer()
-                toggle
+            // Row 4 — Recurring
+            Button { withAnimation(.easeOut(duration: 0.18)) { repeatsDaily.toggle() } } label: {
+                HStack(spacing: 11) {
+                    checkbox
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(L.AddBlock.recurring).font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
+                        Text(L.AddBlock.recurringSub)
+                            .font(.nunito(11.5, .semibold))
+                            .foregroundStyle(AB.textMuted)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 14)
+            .buttonStyle(.plain)
+
+            // Row 5 — how long it keeps repeating
+            if repeatsDaily {
+                rowDivider
+                HStack {
+                    Text(L.AddBlock.endsOn).font(.nunito(15, .bold)).foregroundStyle(AB.textPrimary)
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Button { shiftEnd(-1) } label: {
+                            Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(AB.textSecondary)
+                                .frame(width: 36, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                        Text(repeatsUntil.formatted(.dateTime.day().month(.abbreviated)))
+                            .font(.nunito(13, .heavy))
+                            .foregroundStyle(AB.valueText)
+                            .frame(minWidth: 96)
+                        Button { shiftEnd(1) } label: {
+                            Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(AB.accentPlus)
+                                .frame(width: 36, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .background(AB.fieldFill, in: Capsule())
+                }
+                .padding(.vertical, 12)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 4)
         .background(AB.cardWhite, in: RoundedRectangle(cornerRadius: 26))
         .shadow(color: Color(hex: 0x7A6248).opacity(0.09), radius: 14, y: 5)
+    }
+
+    /// Days from the block's own day up to and including the end date.
+    private var recurDays: Int {
+        let calendar = Calendar.current
+        let from = calendar.startOfDay(for: day)
+        let to = calendar.startOfDay(for: repeatsUntil)
+        return (calendar.dateComponents([.day], from: from, to: to).day ?? 0) + 1
+    }
+
+    private var recurNote: some View {
+        Text(L.AddBlock.recurNote(
+            days: recurDays,
+            until: repeatsUntil.formatted(.dateTime.day().month(.abbreviated))
+        ))
+            .font(.nunito(11.5, .semibold))
+            .lineSpacing(4)
+            .foregroundStyle(AB.textMuted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func shiftEnd(_ direction: Int) {
+        let calendar = Calendar.current
+        guard let next = calendar.date(byAdding: .day, value: direction, to: repeatsUntil) else { return }
+        // Never before the block's own day — a block can't stop repeating
+        // before it starts.
+        guard calendar.startOfDay(for: next) >= calendar.startOfDay(for: day) else { return }
+        repeatsUntil = next
+    }
+
+    private var checkbox: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(repeatsDaily ? AB.toggleOn : AB.fieldFill)
+            .frame(width: 22, height: 22)
+            .overlay {
+                if repeatsDaily {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white)
+                }
+            }
     }
 
     private var rowDivider: some View {
@@ -183,16 +267,16 @@ struct AddBlockSheet: View {
     private var stepper: some View {
         HStack(spacing: 0) {
             Button { lengthMinutes = max(15, lengthMinutes - 15) } label: {
-                Text("−").font(.nunito(16, .heavy)).foregroundStyle(AB.textSecondary)
+                Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(AB.textSecondary)
                     .frame(width: 36, height: 32)
             }
             .buttonStyle(.plain)
-            Text(AB.lengthLabel(lengthMinutes))
+            Text(L.Duration.compact(lengthMinutes))
                 .font(.nunito(13, .heavy))
                 .foregroundStyle(AB.valueText)
                 .frame(minWidth: 66)
             Button { lengthMinutes = min(360, lengthMinutes + 15) } label: {
-                Text("+").font(.nunito(16, .heavy)).foregroundStyle(AB.accentPlus)
+                Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(AB.accentPlus)
                     .frame(width: 36, height: 32)
             }
             .buttonStyle(.plain)
@@ -200,35 +284,20 @@ struct AddBlockSheet: View {
         .background(AB.fieldFill, in: Capsule())
     }
 
-    private var toggle: some View {
-        Button { repeatsDaily.toggle() } label: {
-            ZStack(alignment: repeatsDaily ? .trailing : .leading) {
-                Capsule().fill(repeatsDaily ? AB.toggleOn : AB.toggleOff)
-                    .frame(width: 50, height: 30)
-                Circle().fill(.white)
-                    .frame(width: 24, height: 24)
-                    .shadow(color: .black.opacity(0.15), radius: 2.5, y: 2)
-                    .padding(3)
-            }
-        }
-        .buttonStyle(.plain)
-        .animation(.spring(response: 0.25, dampingFraction: 0.75), value: repeatsDaily)
-    }
-
     private var timePickerSheet: some View {
         NavigationStack {
-            DatePicker("Starts", selection: $start, displayedComponents: .hourAndMinute)
+            DatePicker(L.AddBlock.starts, selection: $start, displayedComponents: .hourAndMinute)
                 .datePickerStyle(.wheel)
                 .labelsHidden()
                 .tint(AB.accentRose)
                 .padding()
                 .frame(maxHeight: .infinity, alignment: .center)
                 .background(AB.sheetBg)
-                .navigationTitle("Starts")
+                .navigationTitle(L.AddBlock.starts)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showTimePicker = false }.tint(AB.accentRose)
+                        Button(L.Common.done) { showTimePicker = false }.tint(AB.accentRose)
                     }
                 }
         }
@@ -260,8 +329,11 @@ struct AddBlockSheet: View {
         block.startTime = start
         block.endTime = start.addingTimeInterval(Double(lengthMinutes) * 60)
         block.repeatsDaily = repeatsDaily
+        block.repeatsUntil = repeatsDaily ? repeatsUntil : nil
         try? context.save()
-        onSaved(repeatsDaily ? "Added to every day this week" : "\(trimmed) added")
+        onSaved(repeatsDaily
+                ? L.AddBlock.toastRepeating(until: repeatsUntil.formatted(.dateTime.day().month(.abbreviated)))
+                : L.AddBlock.toastAdded(trimmed))
         dismiss()
     }
 }
@@ -293,17 +365,17 @@ private enum AB {
     static let accentPlus = Color(hex: 0xC97B8C)
     static let fieldFill = Color(hex: 0xF4EDE4)
     static let divider = Color(hex: 0x7A6248).opacity(0.1)
-    static let chipIdle = Color(hex: 0xEFE8F1)
+    static let chipIdle = Color(hex: 0xF9EDEF)
     static let toggleOff = Color(hex: 0xE7DFD4)
-    static let toggleOn = Color(hex: 0x7FBFAE)
+    static let toggleOn = Color(hex: 0xD98FA0)
     static let disabledBg = Color(hex: 0xF0E7DC)
     static let disabledText = Color(hex: 0xB7AA9B)
     static let valueText = Color(hex: 0x6E6358)
 
     // Chip category label colours
-    static let kids = Color(hex: 0x7C77B5)
+    static let kids = Color(hex: 0xC4788C)
     static let chores = Color(hex: 0xB98B58)
-    static let baby = Color(hex: 0x4E9E86)
+    static let baby = Color(hex: 0xD9758C)
 
     struct Chip: Identifiable {
         let title: String
@@ -313,16 +385,12 @@ private enum AB {
         var id: String { title }
     }
 
-    static let chips: [Chip] = [
-        Chip(title: "School run", category: .kids, color: kids, minutes: 45),
-        Chip(title: "School hours", category: .kids, color: kids, minutes: 300),
-        Chip(title: "Nap time", category: .quiet, color: baby, minutes: 90),
-        Chip(title: "Laundry", category: .chores, color: chores, minutes: 40),
-    ]
-
-    static func lengthLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
-    }
+    // Computed, not stored: the titles are translated copy, and a `static let`
+    // would pin them to whichever language the app first rendered in.
+    static var chips: [Chip] { [
+        Chip(title: L.Blocks.Template.schoolRun, category: .kids, color: kids, minutes: 45),
+        Chip(title: L.Blocks.Template.schoolHours, category: .kids, color: kids, minutes: 300),
+        Chip(title: L.Blocks.Template.napTime, category: .quiet, color: baby, minutes: 90),
+        Chip(title: L.Blocks.Template.laundry, category: .chores, color: chores, minutes: 40),
+    ] }
 }

@@ -1,5 +1,24 @@
 import Foundation
 
+/// What a recipe yields. The raw keys are stable identifiers used inside the
+/// curated library; `label` is the copy the user reads.
+enum RecipeYieldUnit {
+    static let serving = "serving"
+    static let portion = "portion"
+    static let finger = "finger"
+    static let pot = "pot"
+
+    static func label(_ unit: String, count: Int) -> String {
+        let single = count == 1
+        switch unit {
+        case portion: return single ? L.Recipes.unitPortion : L.Recipes.unitPortions
+        case finger: return single ? L.Recipes.unitFinger : L.Recipes.unitFingers
+        case pot: return L.Recipes.unitPot
+        default: return single ? L.Recipes.unitServing : L.Recipes.unitServings
+        }
+    }
+}
+
 /// One line item in a recipe's ingredient list. `amount` is per the recipe's
 /// base yield; the detail screen rescales it by servings ÷ base.
 struct RecipeIngredient {
@@ -24,7 +43,7 @@ struct RecipeContent {
 
     /// Pluralises the yield unit for the servings stepper label.
     func yieldLabel(_ n: Int) -> String {
-        "\(n) \(yieldUnit)\(n == 1 ? "" : "s")"
+        L.Recipes.yield(n, unit: RecipeYieldUnit.label(yieldUnit, count: n))
     }
 
     static func forTitle(_ title: String?, recipe: Recipe) -> RecipeContent {
@@ -36,10 +55,10 @@ struct RecipeContent {
     /// line as "name;;amount" (amount is free text); the leading number is
     /// parsed off for rescaling and the remainder treated as the unit.
     private static func fallback(for recipe: Recipe) -> RecipeContent {
-        let category = recipe.category ?? "Mommy"
-        let isBaby = category == "Baby"
+        let category = recipe.category ?? RecipeCategory.mommy
+        let isBaby = category == RecipeCategory.baby
         let serves = max(1, Int(recipe.servings))
-        let yieldUnit = isBaby ? "portion" : "serving"
+        let yieldUnit = isBaby ? RecipeYieldUnit.portion : RecipeYieldUnit.serving
 
         let ingredients = (recipe.ingredients ?? "")
             .split(separator: "\n").map(String.init)
@@ -56,18 +75,19 @@ struct RecipeContent {
             .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
 
-        let servesLabel = isBaby ? "portion" : "serving"
-        var facts: [(String, String)] = [("\(recipe.prepMinutes)", "minutes"),
-                                         ("\(serves)", serves == 1 ? servesLabel : servesLabel + "s")]
+        var facts: [(String, String)] = [
+            ("\(recipe.prepMinutes)", L.Recipes.factMinutes),
+            ("\(serves)", RecipeYieldUnit.label(yieldUnit, count: serves)),
+        ]
         let count = ingredients.count
-        facts.append(("\(count)", count == 1 ? "item" : "items"))
+        facts.append(("\(count)", count == 1 ? L.Recipes.factItem : L.Recipes.factItems))
 
         let why = (recipe.why?.isEmpty == false)
             ? recipe.why!
-            : "Your own recipe — saved so you never have to remember it again."
+            : L.Recipes.ownWhy
 
         return RecipeContent(
-            tag: "YOUR RECIPE · \(category.uppercased())",
+            tag: L.Recipes.ownTag(RecipeCategory.label(category).uppercased()),
             facts: facts,
             why: why,
             baseYield: serves,
@@ -93,79 +113,79 @@ struct RecipeContent {
         return (0, trimmed)   // no leading number → unchanged across servings
     }
 
-    static let library: [String: RecipeContent] = [
-        "15-min oat bowl": RecipeContent(
-            tag: "BREAKFAST · ONE POT",
-            facts: [("15", "minutes"), ("1", "pot"), ("380", "kcal")],
-            why: "Slow-release oats and a hit of protein — the kind of breakfast that holds until the next feed.",
-            baseYield: 1, yieldUnit: "serving",
-            ingredients: [
-                RecipeIngredient(name: "Rolled oats", amount: 60, unit: "g"),
-                RecipeIngredient(name: "Milk or water", amount: 200, unit: "ml"),
-                RecipeIngredient(name: "Greek yoghurt", amount: 2, unit: "tbsp"),
-                RecipeIngredient(name: "Banana, sliced", amount: 1, unit: "×"),
-                RecipeIngredient(name: "Peanut butter", amount: 1, unit: "tbsp"),
-                RecipeIngredient(name: "Cinnamon", amount: 0.5, unit: "tsp"),
+    /// Keyed by the canonical (English) title that seeding writes to Core Data,
+    /// so the lookup survives a change of language. Everything *inside* an entry
+    /// is translated copy pulled from the catalogue — which is why this is
+    /// computed: a `static let` would pin those to the first language rendered.
+    static var library: [String: RecipeContent] { [
+        L.Recipes.Seed.oatBowlKey: RecipeContent(
+            tag: L.Recipes.Seed.oatBowlTag,
+            facts: [
+                ("15", L.Recipes.factMinutes),
+                ("1", L.Recipes.unitPot),
+                ("380", L.Recipes.factKcal),
             ],
-            steps: [
-                "Add the oats and milk to a small pot over medium heat.",
-                "Stir for 4–5 minutes until creamy and thickened.",
-                "Take off the heat and fold through the Greek yoghurt.",
-                "Top with sliced banana, peanut butter and a dusting of cinnamon.",
-            ]
-        ),
-        "One-pot chicken porridge": RecipeContent(
-            tag: "LUNCH · FREEZER FRIENDLY",
-            facts: [("30", "minutes"), ("1", "pot"), ("420", "kcal")],
-            why: "One pot, barely any washing up, and it freezes beautifully — cook once, eat all week.",
-            baseYield: 4, yieldUnit: "serving",
+            why: L.Recipes.Seed.oatBowlWhy,
+            baseYield: 1, yieldUnit: RecipeYieldUnit.serving,
             ingredients: [
-                RecipeIngredient(name: "Chicken thigh", amount: 300, unit: "g"),
-                RecipeIngredient(name: "Rice", amount: 150, unit: "g"),
-                RecipeIngredient(name: "Water", amount: 1200, unit: "ml"),
-                RecipeIngredient(name: "Ginger, sliced", amount: 3, unit: "×"),
-                RecipeIngredient(name: "Spring onion", amount: 2, unit: "×"),
-                RecipeIngredient(name: "Salt", amount: 1, unit: "tsp"),
+                RecipeIngredient(name: L.Recipes.Seed.rolledOats, amount: 60, unit: L.Recipes.unitGrams),
+                RecipeIngredient(name: L.Recipes.Seed.milkOrWater, amount: 200, unit: L.Recipes.unitMillilitres),
+                RecipeIngredient(name: L.Recipes.Seed.greekYoghurt, amount: 2, unit: L.Recipes.unitTablespoon),
+                RecipeIngredient(name: L.Recipes.Seed.bananaSliced, amount: 1, unit: L.Recipes.unitCount),
+                RecipeIngredient(name: L.Recipes.Seed.peanutButter, amount: 1, unit: L.Recipes.unitTablespoon),
+                RecipeIngredient(name: L.Recipes.Seed.cinnamon, amount: 0.5, unit: L.Recipes.unitTeaspoon),
             ],
-            steps: [
-                "Add the chicken, rice, water and ginger to a large pot.",
-                "Bring to a boil, then lower to a gentle simmer.",
-                "Cook for 25 minutes, stirring now and then, until thick.",
-                "Shred the chicken, season with salt and scatter spring onion.",
-            ]
+            steps: L.Recipes.Seed.oatBowlSteps
         ),
-        "Sweet potato mash": RecipeContent(
-            tag: "FIRST FOODS · 6M+",
-            facts: [("10", "minutes"), ("4", "portions"), ("90", "kcal")],
-            why: "Smooth, naturally sweet and gentle on new tummies — a lovely first taste.",
-            baseYield: 4, yieldUnit: "portion",
+        L.Recipes.Seed.porridgeKey: RecipeContent(
+            tag: L.Recipes.Seed.porridgeTag,
+            facts: [
+                ("30", L.Recipes.factMinutes),
+                ("1", L.Recipes.unitPot),
+                ("420", L.Recipes.factKcal),
+            ],
+            why: L.Recipes.Seed.porridgeWhy,
+            baseYield: 4, yieldUnit: RecipeYieldUnit.serving,
             ingredients: [
-                RecipeIngredient(name: "Sweet potato", amount: 1, unit: "×"),
-                RecipeIngredient(name: "Breast milk or formula", amount: 30, unit: "ml"),
+                RecipeIngredient(name: L.Recipes.Seed.chickenThigh, amount: 300, unit: L.Recipes.unitGrams),
+                RecipeIngredient(name: L.Recipes.Seed.rice, amount: 150, unit: L.Recipes.unitGrams),
+                RecipeIngredient(name: L.Recipes.Seed.water, amount: 1200, unit: L.Recipes.unitMillilitres),
+                RecipeIngredient(name: L.Recipes.Seed.gingerSliced, amount: 3, unit: L.Recipes.unitCount),
+                RecipeIngredient(name: L.Recipes.Seed.springOnion, amount: 2, unit: L.Recipes.unitCount),
+                RecipeIngredient(name: L.Recipes.Seed.salt, amount: 1, unit: L.Recipes.unitTeaspoon),
             ],
-            steps: [
-                "Peel and dice the sweet potato into small cubes.",
-                "Steam for 8 minutes until very soft.",
-                "Mash with the milk until smooth, adding more to loosen.",
-                "Cool to just warm before serving.",
-            ]
+            steps: L.Recipes.Seed.porridgeSteps
         ),
-        "Banana oat fingers": RecipeContent(
-            tag: "FINGER FOOD · 8M+",
-            facts: [("20", "minutes"), ("8", "fingers"), ("60", "kcal")],
-            why: "Soft, self-feeding fingers with no added sugar — perfect for little hands learning to grip.",
-            baseYield: 8, yieldUnit: "finger",
+        L.Recipes.Seed.sweetPotatoKey: RecipeContent(
+            tag: L.Recipes.Seed.sweetPotatoTag,
+            facts: [
+                ("10", L.Recipes.factMinutes),
+                ("4", L.Recipes.unitPortions),
+                ("90", L.Recipes.factKcal),
+            ],
+            why: L.Recipes.Seed.sweetPotatoWhy,
+            baseYield: 4, yieldUnit: RecipeYieldUnit.portion,
             ingredients: [
-                RecipeIngredient(name: "Banana, ripe", amount: 2, unit: "×"),
-                RecipeIngredient(name: "Rolled oats", amount: 80, unit: "g"),
+                RecipeIngredient(name: L.Recipes.Seed.sweetPotato, amount: 1, unit: L.Recipes.unitCount),
+                RecipeIngredient(name: L.Recipes.Seed.breastMilkOrFormula, amount: 30, unit: L.Recipes.unitMillilitres),
             ],
-            steps: [
-                "Heat the oven to 180°C and line a small tray.",
-                "Mash the bananas, then stir in the oats to a thick dough.",
-                "Shape into finger lengths and place on the tray.",
-                "Bake for 15 minutes until set and lightly golden. Cool before serving.",
-            ]
+            steps: L.Recipes.Seed.sweetPotatoSteps
         ),
-    ]
+        L.Recipes.Seed.bananaFingersKey: RecipeContent(
+            tag: L.Recipes.Seed.bananaFingersTag,
+            facts: [
+                ("20", L.Recipes.factMinutes),
+                ("8", L.Recipes.unitFingers),
+                ("60", L.Recipes.factKcal),
+            ],
+            why: L.Recipes.Seed.bananaFingersWhy,
+            baseYield: 8, yieldUnit: RecipeYieldUnit.finger,
+            ingredients: [
+                RecipeIngredient(name: L.Recipes.Seed.bananaRipe, amount: 2, unit: L.Recipes.unitCount),
+                RecipeIngredient(name: L.Recipes.Seed.rolledOats, amount: 80, unit: L.Recipes.unitGrams),
+            ],
+            steps: L.Recipes.Seed.bananaFingersSteps
+        ),
+    ] }
 }
 

@@ -24,46 +24,46 @@ struct EditBlockSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Details") {
-                    TextField("Title (e.g. Nap time)", text: $title)
+                Section(L.EditBlock.details) {
+                    TextField(L.AddBlock.titlePlaceholder, text: $title)
                     if category == .meTime {
                         Label(BlockCategory.meTime.label, systemImage: BlockCategory.meTime.systemImage)
                             .foregroundStyle(BlockCategory.meTime.color)
                     } else {
-                        Picker("Category", selection: $category) {
+                        Picker(L.EditBlock.category, selection: $category) {
                             ForEach(BlockCategory.allCases.filter { $0 != .meTime }) { cat in
                                 Label(cat.label, systemImage: cat.systemImage).tag(cat)
                             }
                         }
                     }
-                    DatePicker("Starts", selection: $start, displayedComponents: .hourAndMinute)
-                    DatePicker("Ends", selection: $end, displayedComponents: .hourAndMinute)
-                    Toggle("Repeats every day", isOn: $repeatsDaily)
+                    DatePicker(L.EditBlock.starts, selection: $start, displayedComponents: .hourAndMinute)
+                    DatePicker(L.EditBlock.ends, selection: $end, displayedComponents: .hourAndMinute)
+                    Toggle(L.EditBlock.repeatsDaily, isOn: $repeatsDaily)
                 }
 
                 if category == .quiet {
                     Section {
-                        Text("Quiet time (naps, school hours) counts as free time for YOU — the app will favour these windows when finding your me-time. 🌙")
+                        Text(L.EditBlock.quietHint)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 Section {
-                    Button("Delete block", role: .destructive) {
+                    Button(L.EditBlock.deleteButton, role: .destructive) {
                         showingDeleteConfirmation = true
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
-            .navigationTitle("Edit block")
+            .navigationTitle(L.EditBlock.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(L.Common.cancel) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button(L.Common.save) { save() }
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || end <= start)
                 }
             }
@@ -72,8 +72,8 @@ struct EditBlockSheet: View {
                 isPresented: $showingDeleteConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Delete", role: .destructive) { deleteBlock() }
-                Button("Cancel", role: .cancel) {}
+                Button(L.Common.delete, role: .destructive) { deleteBlock() }
+                Button(L.Common.cancel, role: .cancel) {}
             } message: {
                 Text(deleteConfirmationMessage)
             }
@@ -81,17 +81,13 @@ struct EditBlockSheet: View {
     }
 
     private var deleteConfirmationTitle: String {
-        repeatsDaily ? "Delete this repeating block?" : "Delete this block?"
+        repeatsDaily ? L.EditBlock.deleteRepeatingTitle : L.EditBlock.deleteTitle
     }
 
     private var deleteConfirmationMessage: String {
-        if category == .meTime {
-            return "This me-time session will no longer count towards your goal."
-        }
-        if repeatsDaily {
-            return "It will be removed from every day, not just today."
-        }
-        return "This can't be undone."
+        if category == .meTime { return L.EditBlock.deleteMeTimeMessage }
+        if repeatsDaily { return L.EditBlock.deleteRepeatingMessage }
+        return L.EditBlock.deleteMessage
     }
 
     private func save() {

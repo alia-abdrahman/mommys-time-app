@@ -58,12 +58,12 @@ struct FindTimeSheet: View {
 
     private var header: some View {
         ZStack {
-            Text("Your best windows")
+            Text(L.FindTime.title)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(FT.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Close")
+                    Text(L.Common.close)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(FT.textSecondary)
                         .padding(.vertical, 8)
@@ -79,7 +79,7 @@ struct FindTimeSheet: View {
     }
 
     private var footerNote: some View {
-        Text("Booking a slot adds it to today's schedule — your me-time becomes as official as the chores.")
+        Text(L.FindTime.footerNote)
             .font(.nunito(12.5, .bold))
             .lineSpacing(6)
             .foregroundStyle(FT.noteText)
@@ -91,11 +91,11 @@ struct FindTimeSheet: View {
 
     private var noSlotsView: some View {
         VStack(spacing: 12) {
-            Text("😮‍💨").font(.system(size: 52))
-            Text("No free windows left today")
+            Text(L.FindTime.emptyEmoji).font(.system(size: 52))
+            Text(L.FindTime.emptyTitle)
                 .font(.baloo(20, heavy: true))
                 .foregroundStyle(FT.textPrimary)
-            Text("Today is a full one, mama. Try again tomorrow, or shorten the minimum gap in Settings.")
+            Text(L.FindTime.emptyBody)
                 .font(.nunito(15))
                 .foregroundStyle(FT.textMuted)
                 .multilineTextAlignment(.center)
@@ -108,23 +108,16 @@ struct FindTimeSheet: View {
     // MARK: Logic
 
     private func note(for slot: FreeSlot) -> String {
-        let r = slot.reasons
-        if r.contains(where: { $0.contains("bedtime") }) {
-            return "After bedtime — nobody will need you."
-        }
-        if r.contains(where: { $0.contains("quiet") }) {
-            return "The kids are settled — the house is quiet."
-        }
-        if slot.minutes >= 90 {
-            return "A lovely long stretch — a real pocket for you."
-        }
-        return "\(slot.minutes) free minutes just for you."
+        if slot.reasons.contains(.afterBedtime) { return L.FindTime.noteAfterBedtime }
+        if slot.reasons.contains(.quietTime) { return L.FindTime.noteQuiet }
+        if slot.minutes >= 90 { return L.FindTime.noteLong }
+        return L.FindTime.noteMinutes(slot.minutes)
     }
 
     private func book(_ slot: FreeSlot) {
         let block = ScheduleBlock(context: context)
         block.id = UUID()
-        block.title = "Me-time"
+        block.title = L.Blocks.meTimeBlockTitle
         block.category = BlockCategory.meTime.rawValue
         block.startTime = slot.start
         block.endTime = slot.end
@@ -138,7 +131,7 @@ struct FindTimeSheet: View {
         session.block = block
 
         try? context.save()
-        onBooked("Booked \(FT.durationLabel(slot.minutes)) of me-time")
+        onBooked(L.FindTime.booked(L.Duration.compact(slot.minutes)))
         dismiss()
     }
 }
@@ -153,11 +146,14 @@ private struct WindowCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
-                Text("\(slot.start, format: .dateTime.hour().minute()) – \(slot.end, format: .dateTime.hour().minute())")
+                Text(L.FindTime.range(
+                    slot.start.formatted(.dateTime.hour().minute()),
+                    slot.end.formatted(.dateTime.hour().minute())
+                ))
                     .font(.baloo(19, heavy: true))
                     .foregroundStyle(FT.textPrimary)
                 Spacer()
-                Text("\(slot.minutes) min")
+                Text(L.Duration.minutes(slot.minutes))
                     .font(.nunito(12, .heavy))
                     .foregroundStyle(FT.textMuted)
             }
@@ -168,7 +164,7 @@ private struct WindowCard: View {
                 .padding(.top, 4)
 
             Button(action: onBook) {
-                Text("Book this time")
+                Text(L.FindTime.book)
                     .font(.baloo(15))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -197,10 +193,4 @@ private enum FT {
     static let accentRose = Color(hex: 0xD98FA0)
     static let noteBg = Color(hex: 0xFBEBD8)
     static let noteText = Color(hex: 0x8A6A44)
-
-    static func durationLabel(_ m: Int) -> String {
-        if m < 60 { return "\(m) min" }
-        let h = m / 60, r = m % 60
-        return r == 0 ? "\(h)h" : "\(h)h \(r)m"
-    }
 }

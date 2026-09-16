@@ -1,13 +1,56 @@
 import SwiftUI
 import CoreData
 
+/// What a purchase was for. Raw values are written to `Expense.category`, so
+/// they stay in English; `label` is what the chips and bars show.
 enum SpendingCategory {
-    static let all = ["Diapers", "Clothes", "Formula", "Food", "Medicine", "Other"]
+    static let diapers = "Diapers"
+    static let clothes = "Clothes"
+    static let formula = "Formula"
+    static let food = "Food"
+    static let medicine = "Medicine"
+    static let other = "Other"
+
+    static let all = [diapers, clothes, formula, food, medicine, other]
+    /// The subset offered as chips on the Add Purchase sheet.
+    static let chips = [formula, diapers, clothes, food, medicine]
+
+    static func label(_ value: String) -> String {
+        switch value {
+        case diapers: return L.Spending.categoryDiapers
+        case clothes: return L.Spending.categoryClothes
+        case formula: return L.Spending.categoryFormula
+        case food: return L.Spending.categoryFood
+        case medicine: return L.Spending.categoryMedicine
+        default: return L.Spending.categoryOther
+        }
+    }
+}
+
+/// The window the spending screen is showing. View state only.
+enum SpendingRange: CaseIterable {
+    case week, month, all
+
+    var label: String {
+        switch self {
+        case .week: return L.Spending.rangeWeek
+        case .month: return L.Spending.rangeMonth
+        case .all: return L.Spending.rangeAll
+        }
+    }
+
+    var eyebrow: String {
+        switch self {
+        case .week: return L.Spending.eyebrowWeek
+        case .month: return L.Spending.eyebrowMonth
+        case .all: return L.Spending.eyebrowAll
+        }
+    }
 }
 
 /// Formats an amount as "RM 60.00".
 func spendingCurrency(_ value: Double) -> String {
-    "RM " + value.formatted(.number.precision(.fractionLength(2)))
+    L.Spending.currency(value.formatted(.number.precision(.fractionLength(2))))
 }
 
 struct MySpendingView: View {
@@ -20,10 +63,8 @@ struct MySpendingView: View {
     private var expenses: FetchedResults<Expense>
 
     @State private var showingAdd = false
-    @State private var range = "This month"
+    @State private var range = SpendingRange.month
     @State private var toast: String?
-
-    private let ranges = ["This week", "This month", "All time"]
 
     private var filtered: [Expense] {
         let cal = Calendar.current
@@ -31,9 +72,9 @@ struct MySpendingView: View {
         return expenses.filter { e in
             guard let d = e.date else { return false }
             switch range {
-            case "This week": return cal.isDate(d, equalTo: now, toGranularity: .weekOfYear)
-            case "This month": return cal.isDate(d, equalTo: now, toGranularity: .month)
-            default: return true
+            case .week: return cal.isDate(d, equalTo: now, toGranularity: .weekOfYear)
+            case .month: return cal.isDate(d, equalTo: now, toGranularity: .month)
+            case .all: return true
             }
         }
     }
@@ -41,29 +82,24 @@ struct MySpendingView: View {
     private var total: Double { filtered.reduce(0) { $0 + $1.amount } }
 
     private var byCategory: [(category: String, total: Double)] {
-        Dictionary(grouping: filtered) { $0.category ?? "Other" }
+        Dictionary(grouping: filtered) { $0.category ?? SpendingCategory.other }
             .mapValues { $0.reduce(0.0) { $0 + $1.amount } }
             .map { (category: $0.key, total: $0.value) }
             .sorted { $0.total > $1.total }
     }
 
-    private var eyebrow: String {
-        switch range {
-        case "This week": return "Spent this week"
-        case "All time": return "Spent all time"
-        default: return "Spent this month"
-        }
-    }
-
     private var compareLine: String {
-        guard let top = byCategory.first else { return "No purchases in this range yet." }
-        return "Biggest slice: \(top.category) at \(spendingCurrency(top.total))"
+        guard let top = byCategory.first else { return L.Spending.compareEmpty }
+        return L.Spending.compare(
+            category: SpendingCategory.label(top.category),
+            amount: spendingCurrency(top.total)
+        )
     }
 
     /// Total already spent per category in the current range — feeds the Add
     /// Purchase sheet's live footer note.
     private var priorSpendByCategory: [String: Double] {
-        Dictionary(grouping: filtered) { $0.category ?? "Other" }
+        Dictionary(grouping: filtered) { $0.category ?? SpendingCategory.other }
             .mapValues { $0.reduce(0.0) { $0 + $1.amount } }
     }
 
@@ -72,32 +108,26 @@ struct MySpendingView: View {
             header
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    totalCard
+                    heroCard
+                    rangeControl.padding(.top, 10)
 
-                    HStack {
-                        Text("By category")
-                            .font(.baloo(15, heavy: true))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L.Spending.whereTitle)
+                            .font(.baloo(19, heavy: true))
                             .foregroundStyle(SP.textPrimary)
-                        Spacer()
-                        Text("\(filtered.count) purchase\(filtered.count == 1 ? "" : "s")")
-                            .font(.nunito(12, .bold))
+                        Text(compareLine)
+                            .font(.nunito(12.5, .semibold))
                             .foregroundStyle(SP.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(.top, 16).padding(.bottom, 10)
+                    .padding(.top, 16).padding(.horizontal, 2)
 
-                    if byCategory.isEmpty {
-                        rangeEmptyState
-                    } else {
-                        categoryBars
-                    }
+                    categoryCard.padding(.top, 12)
 
-                    Text("RECENT")
-                        .font(.nunito(12, .heavy)).tracking(0.8)
-                        .foregroundStyle(SP.textMuted)
-                        .padding(.top, 18).padding(.bottom, 8)
+                    recentHeader.padding(.top, 20).padding(.bottom, 8)
                     recentList
                 }
-                .padding(.top, 14)
+                .padding(.top, 18)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 120)
             }
@@ -112,7 +142,7 @@ struct MySpendingView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -122,7 +152,7 @@ struct MySpendingView: View {
 
     private var header: some View {
         ZStack {
-            Text("My Spending")
+            Text(L.Spending.title)
                 .font(.baloo(19, heavy: true))
                 .foregroundStyle(SP.textPrimary)
             HStack {
@@ -143,113 +173,159 @@ struct MySpendingView: View {
         .padding(.top, 8)
     }
 
-    // MARK: Total card
+    // MARK: Hero
 
-    private var totalCard: some View {
+    private var heroCard: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(eyebrow).font(.nunito(12, .bold)).foregroundStyle(SP.roseTag)
-                    Text(spendingCurrency(total))
-                        .font(.baloo(32, heavy: true))
-                        .foregroundStyle(SP.roseValue)
+            Image("my-spending")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(Theme.tileGlyph)
+                .frame(width: 38, height: 38)
+                .background(.white, in: Circle())
+                .padding(.bottom, 8)
+
+            Text(spendingCurrency(total))
+                .font(.baloo(20, heavy: true))
+                .foregroundStyle(Theme.roseInk)
+
+            HStack(spacing: 6) {
+                Text(L.Spending.eyebrowSuffix(range.eyebrow))
+                    .font(.nunito(13, .bold))
+                    .foregroundStyle(SP.roseTag)
+                Text(L.Spending.purchaseCount(filtered.count))
+                    .font(.nunito(13, .heavy))
+                    .foregroundStyle(Theme.roseAccentText)
+                    .padding(.vertical, 2).padding(.horizontal, 9)
+                    .background(.white, in: Capsule())
+            }
+            .padding(.top, 4)
+
+            Button { showingAdd = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold))
+                    Text(L.Spending.logCTA).font(.baloo(16))
                 }
-                Spacer(minLength: 0)
-                Button { showingAdd = true } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(SP.roseCTA, in: Circle())
-                        .shadow(color: Color(hex: 0xBE5F78).opacity(0.4), radius: 16, y: 6)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(Theme.tileGlyph, in: Capsule())
+                .shadow(color: Color(hex: 0xBE5F78).opacity(0.34), radius: 9, y: 8)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14).padding(.horizontal, 20)
+        .background(SP.roseFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    private var rangeControl: some View {
+        HStack(spacing: 5) {
+            ForEach(SpendingRange.allCases, id: \.self) { r in
+                let sel = r == range
+                Button { withAnimation(.easeInOut(duration: 0.2)) { range = r } } label: {
+                    Text(r.label)
+                        .font(.nunito(12.5, .heavy))
+                        .foregroundStyle(sel ? Theme.roseText : Theme.inkFaint)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background {
+                            if sel {
+                                Capsule().fill(.white)
+                                    .shadow(color: Color(hex: 0x7A6248).opacity(0.14), radius: 4, y: 2)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
             }
-
-            HStack(spacing: 6) {
-                ForEach(ranges, id: \.self) { r in
-                    let sel = r == range
-                    Button { withAnimation(.easeInOut(duration: 0.2)) { range = r } } label: {
-                        Text(r)
-                            .font(.nunito(12.5, .heavy))
-                            .foregroundStyle(sel ? .white : SP.roseTag)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .background { if sel { Capsule().fill(SP.roseCTA) } }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(4)
-            .background(.white, in: Capsule())
-            .padding(.top, 14)
-
-            Text(compareLine)
-                .font(.nunito(12, .bold))
-                .foregroundStyle(SP.roseTag)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
         }
-        .padding(.vertical, 16).padding(.horizontal, 18)
-        .background(SP.roseFill, in: RoundedRectangle(cornerRadius: 26))
+        .padding(4)
+        .background(Theme.field, in: Capsule())
     }
 
     // MARK: Category bars
 
-    private var categoryBars: some View {
+    private var categoryCard: some View {
         let maxAmount = byCategory.map(\.total).max() ?? 1
-        return VStack(spacing: 11) {
-            ForEach(byCategory, id: \.category) { item in
-                VStack(spacing: 4) {
-                    HStack {
-                        Text(item.category).font(.nunito(12, .bold)).foregroundStyle(SP.textSecondary)
-                        Spacer()
-                        Text(spendingCurrency(item.total)).font(.nunito(12, .bold)).foregroundStyle(SP.roseValue)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(SP.trackBg)
-                            Capsule().fill(SP.categoryColor(item.category))
-                                .frame(width: geo.size.width * CGFloat(item.total / maxAmount))
+        return VStack(spacing: 12) {
+            if byCategory.isEmpty {
+                VStack(spacing: 5) {
+                    Text(L.Spending.categoryEmptyTitle)
+                        .font(.baloo(16, heavy: true))
+                        .foregroundStyle(SP.textPrimary)
+                    Text(L.Spending.categoryEmptyBody)
+                        .font(.nunito(12.5, .semibold)).lineSpacing(4)
+                        .foregroundStyle(SP.textMuted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 22).padding(.horizontal, 6)
+            } else {
+                ForEach(byCategory, id: \.category) { item in
+                    VStack(spacing: 5) {
+                        HStack {
+                            Text(SpendingCategory.label(item.category))
+                                .font(.nunito(12, .bold)).foregroundStyle(SP.textSecondary)
+                            Spacer()
+                            Text(spendingCurrency(item.total)).font(.nunito(12, .bold)).foregroundStyle(SP.roseValue)
                         }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(SP.trackBg)
+                                Capsule().fill(SP.categoryColor(item.category))
+                                    .frame(width: geo.size.width * CGFloat(item.total / maxAmount))
+                            }
+                        }
+                        .frame(height: 12)
                     }
-                    .frame(height: 12)
                 }
             }
         }
-    }
-
-    private var rangeEmptyState: some View {
-        VStack(spacing: 5) {
-            Text("Nothing logged yet")
-                .font(.baloo(16, heavy: true))
-                .foregroundStyle(SP.textPrimary)
-            Text("Add a purchase with the + button to start tracking where the money goes.")
-                .font(.nunito(13, .semibold)).lineSpacing(4)
-                .foregroundStyle(SP.textMuted)
-                .multilineTextAlignment(.center)
-        }
+        .padding(15)
         .frame(maxWidth: .infinity)
-        .padding(18)
-        .background(SP.roseRow, in: RoundedRectangle(cornerRadius: 22))
-        .padding(.top, 8)
+        .background(.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.08), radius: 8, y: 4)
     }
 
     // MARK: Recent list
 
-    private var recentList: some View {
-        VStack(spacing: 9) {
-            ForEach(filtered, id: \.objectID) { expense in
-                ExpenseRow(expense: expense) { delete(expense) }
+    private var recentHeader: some View {
+        HStack {
+            SectionLabel(L.Spending.recent)
+            NavigationLink {
+                AllPurchasesView()
+            } label: {
+                HStack(spacing: 5) {
+                    Text(L.Spending.viewAll)
+                        .font(.nunito(12, .heavy))
+                        .foregroundStyle(Theme.roseAccentText)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(Theme.roseAccentText)
+                }
             }
+            .buttonStyle(.plain)
         }
     }
 
+    /// Only the five most recent — the rest live on All Purchases.
+    private var recentList: some View {
+        ExpenseListCard(expenses: Array(filtered.prefix(5)),
+                        empty: L.Spending.recentEmpty,
+                        onDelete: delete)
+    }
+
     private func delete(_ expense: Expense) {
-        let name = expense.title ?? "Purchase"
+        let name = expense.title ?? L.Spending.fallbackName
         withAnimation { context.delete(expense) }
         try? context.save()
-        showToast("\(name) removed")
+        showToast(L.Spending.removed(name))
     }
 
     private func showToast(_ message: String) {
@@ -260,43 +336,218 @@ struct MySpendingView: View {
     }
 }
 
+/// One bordered card holding every purchase row, hairlines between — the same
+/// treatment the log histories use.
+private struct ExpenseListCard: View {
+    let expenses: [Expense]
+    let empty: String
+    var onDelete: (Expense) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if expenses.isEmpty {
+                Text(empty)
+                    .font(.nunito(13.5, .bold))
+                    .foregroundStyle(SP.textMuted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 26).padding(.horizontal, 22)
+            } else {
+                ForEach(Array(expenses.enumerated()), id: \.element.objectID) { index, expense in
+                    if index > 0 { CardDivider() }
+                    ExpenseRow(expense: expense) { onDelete(expense) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Color(hex: 0x7A6248).opacity(0.07), radius: 8, y: 4)
+    }
+}
+
 private struct ExpenseRow: View {
     @ObservedObject var expense: Expense
     var onDelete: () -> Void
 
     private var meta: String {
-        let cat = expense.category ?? "Other"
-        let date = (expense.date ?? Date()).formatted(.dateTime.day().month())
-        return "\(cat) · \(date)"
+        L.Spending.rowMeta(
+            category: SpendingCategory.label(expense.category ?? SpendingCategory.other),
+            date: (expense.date ?? Date()).formatted(.dateTime.day().month())
+        )
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 11) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(expense.title ?? "")
-                    .font(.nunito(14.5, .heavy))
+                    .font(.nunito(14, .heavy))
                     .foregroundStyle(SP.textPrimary)
                 Text(meta)
-                    .font(.nunito(12, .semibold))
+                    .font(.nunito(11.5, .semibold))
                     .foregroundStyle(SP.textMuted)
             }
             Spacer(minLength: 8)
             Text(spendingCurrency(expense.amount))
-                .font(.nunito(14.5, .heavy))
+                .font(.nunito(14, .heavy))
                 .foregroundStyle(SP.roseValue)
                 .fixedSize()
             Button(action: onDelete) {
-                Text("×")
+                Text(L.Glyph.remove)
                     .font(.nunito(13, .heavy))
                     .foregroundStyle(SP.removeIcon)
                     .frame(width: 26, height: 26)
-                    .background(.white, in: Circle())
+                    .background(Theme.field, in: Circle())
             }
             .buttonStyle(.plain)
         }
-        .padding(.vertical, 12).padding(.horizontal, 16)
+        .padding(.vertical, 12).padding(.horizontal, 15)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SP.roseRow, in: RoundedRectangle(cornerRadius: 20))
+    }
+}
+
+// MARK: - All purchases
+
+/// Every purchase ever logged, optionally narrowed to a single date.
+struct AllPurchasesView: View {
+    @Environment(\.managedObjectContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \Expense.date, ascending: false)],
+        animation: .default
+    )
+    private var expenses: FetchedResults<Expense>
+
+    @State private var day: Date?
+    @State private var calendarOpen = false
+    @State private var toast: String?
+
+    private let calendar = Calendar.current
+
+    private var shown: [Expense] {
+        guard let day else { return Array(expenses) }
+        return expenses.filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                DetailHeader(title: L.Spending.allTitle) { dismiss() }
+
+                ZStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        filterBar
+
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(day == nil ? L.Spending.everyPurchase : dayLabel)
+                                .font(.baloo(15, heavy: true))
+                                .foregroundStyle(SP.textPrimary)
+                            Spacer()
+                            Text(totalLabel)
+                                .font(.nunito(11, .heavy)).tracking(0.5)
+                                .foregroundStyle(Theme.roseAccentText)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.top, 14).padding(.bottom, 8)
+
+                        ExpenseListCard(expenses: shown,
+                                        empty: day == nil ? L.Spending.allEmpty : L.Spending.dayEmpty,
+                                        onDelete: delete)
+                    }
+                    if calendarOpen { popover }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 116)
+        }
+        .background(Theme.canvas.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 120)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    private var dayLabel: String {
+        (day ?? Date()).formatted(.dateTime.day().month(.abbreviated))
+    }
+
+    private var totalLabel: String {
+        guard !shown.isEmpty else { return "" }
+        let sum = shown.reduce(0.0) { $0 + $1.amount }
+        return L.Spending.allTotal(count: shown.count, amount: spendingCurrency(sum).uppercased())
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            Button { withAnimation(.easeOut(duration: 0.16)) { day = nil; calendarOpen = false } } label: {
+                Text(L.Spending.allDates)
+                    .font(.nunito(12.5, .heavy))
+                    .foregroundStyle(day == nil ? .white : Theme.inkFaint)
+                    .padding(.horizontal, 15).padding(.vertical, 9)
+                    .background(day == nil ? Theme.tileGlyph : Theme.field, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Button { withAnimation(.easeOut(duration: 0.16)) { calendarOpen.toggle() } } label: {
+                HStack(spacing: 6) {
+                    Text(day == nil ? L.Spending.pickDate : dayLabel)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .heavy))
+                        .rotationEffect(.degrees(calendarOpen ? 180 : 0))
+                }
+                .font(.nunito(12.5, .heavy))
+                .foregroundStyle(day == nil ? Theme.inkFaint : .white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9).padding(.horizontal, 12)
+                .background(day == nil ? Theme.field : Theme.tileGlyph, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Theme.cardBorder, lineWidth: 2)
+        }
+        .shadow(color: Theme.softShadow, radius: 9, y: 5)
+    }
+
+    private var popover: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 62)
+            MiniCalendarPopover(
+                date: Binding(get: { day ?? Date() }, set: { day = $0 }),
+                hasEntries: { date in
+                    expenses.contains { calendar.isDate($0.date ?? .distantPast, inSameDayAs: date) }
+                }
+            ) { picked in
+                withAnimation(.easeOut(duration: 0.16)) {
+                    day = picked
+                    calendarOpen = false
+                }
+            }
+        }
+        .zIndex(2)
+    }
+
+    private func delete(_ expense: Expense) {
+        let name = expense.title ?? L.Spending.fallbackName
+        withAnimation { context.delete(expense) }
+        try? context.save()
+        withAnimation { toast = L.Spending.removed(name) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
     }
 }
 
@@ -316,13 +567,15 @@ private enum SP {
     static let removeIcon = Color(hex: 0xB7AA9B)
     static let backIcon = Color(hex: 0x8B7F72)
 
+    /// Keyed on the stored (English) category so a translated label can't break
+    /// the bar colours.
     static func categoryColor(_ name: String) -> Color {
         switch name {
-        case "Formula": return Color(hex: 0xD98FA0)
-        case "Diapers": return Color(hex: 0xDFA0AE)
-        case "Clothes": return Color(hex: 0xE8B6BF)
-        case "Food": return Color(hex: 0xF0CBD1)
-        case "Medicine", "Health": return Color(hex: 0xF5DDE1)
+        case SpendingCategory.formula: return Color(hex: 0xD98FA0)
+        case SpendingCategory.diapers: return Color(hex: 0xDFA0AE)
+        case SpendingCategory.clothes: return Color(hex: 0xE8B6BF)
+        case SpendingCategory.food: return Color(hex: 0xF0CBD1)
+        case SpendingCategory.medicine, "Health": return Color(hex: 0xF5DDE1)
         default: return Color(hex: 0xE8B6BF)
         }
     }
@@ -343,7 +596,7 @@ struct ExpenseSheet: View {
     @State private var addToInventory = false
     @State private var nameToast = false
 
-    private let chips = ["Formula", "Diapers", "Clothes", "Food", "Medicine"]
+    private let chips = SpendingCategory.chips
 
     init(expense: Expense? = nil, priorSpend: [String: Double] = [:], onSaved: @escaping (String) -> Void = { _ in }) {
         self.expense = expense
@@ -351,7 +604,7 @@ struct ExpenseSheet: View {
         self.onSaved = onSaved
         _title = State(initialValue: expense?.title ?? "")
         _amount = State(initialValue: expense?.amount ?? 30)
-        _category = State(initialValue: expense?.category ?? "Formula")
+        _category = State(initialValue: expense?.category ?? SpendingCategory.formula)
         _date = State(initialValue: expense?.date ?? Date())
     }
 
@@ -363,9 +616,9 @@ struct ExpenseSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 amountHero.padding(.top, 20)
-                sectionLabel("CATEGORY").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Spending.sectionCategory).padding(.top, 20).padding(.bottom, 8)
                 categoryChips
-                sectionLabel("DETAILS").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Spending.sectionDetails).padding(.top, 20).padding(.bottom, 8)
                 detailsCard
                 footerNote.padding(.top, 14)
             }
@@ -379,7 +632,7 @@ struct ExpenseSheet: View {
         .presentationDragIndicator(.hidden)
         .overlay(alignment: .bottom) {
             if nameToast {
-                Toast(text: amount <= 0 ? "Add an amount first" : "Name the purchase first")
+                Toast(text: amount <= 0 ? L.Spending.toastNeedsAmount : L.Spending.toastNeedsName)
                     .padding(.bottom, 40)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -390,12 +643,12 @@ struct ExpenseSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(isEditing ? "Edit Purchase" : "Add Purchase")
+            Text(isEditing ? L.Spending.sheetEditTitle : L.Spending.sheetNewTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(EX.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(EX.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -405,7 +658,7 @@ struct ExpenseSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : EX.disabledText)
                         .padding(.vertical, 8).padding(.horizontal, 18)
@@ -420,23 +673,23 @@ struct ExpenseSheet: View {
 
     private var amountHero: some View {
         VStack(spacing: 0) {
-            Text("Amount").font(.nunito(12, .bold)).foregroundStyle(EX.roseTag)
+            Text(L.Spending.amountLabel).font(.nunito(12, .bold)).foregroundStyle(EX.roseTag)
             HStack(alignment: .lastTextBaseline, spacing: 2) {
-                Text("RM ").font(.baloo(17, heavy: true)).foregroundStyle(EX.roseTag)
+                Text(L.Spending.currencySymbol).font(.baloo(17, heavy: true)).foregroundStyle(EX.roseTag)
                 Text(amount.formatted(.number.precision(.fractionLength(2))))
                     .font(.baloo(42, heavy: true)).foregroundStyle(EX.roseValue)
             }
             .padding(.top, 4)
             HStack(spacing: 10) {
                 Button { amount = max(0, amount - 5) } label: {
-                    Text("−").font(.nunito(20, .heavy)).foregroundStyle(EX.roseTag)
+                    Text(L.Glyph.minus).font(.nunito(20, .heavy)).foregroundStyle(EX.roseTag)
                         .frame(width: 46, height: 46).background(.white, in: Circle())
                         .shadow(color: Color(hex: 0xC46A82).opacity(0.14), radius: 12, y: 4)
                 }
                 .buttonStyle(.plain)
-                Text("RM 5 steps").font(.nunito(12, .bold)).foregroundStyle(EX.roseTag).frame(minWidth: 52)
+                Text(L.Spending.amountStep).font(.nunito(12, .bold)).foregroundStyle(EX.roseTag).frame(minWidth: 52)
                 Button { amount = min(2000, amount + 5) } label: {
-                    Text("+").font(.nunito(20, .heavy)).foregroundStyle(.white)
+                    Text(L.Glyph.plus).font(.nunito(20, .heavy)).foregroundStyle(.white)
                         .frame(width: 46, height: 46).background(EX.roseCTA, in: Circle())
                         .shadow(color: Color(hex: 0xBE5F78).opacity(0.4), radius: 16, y: 6)
                 }
@@ -463,7 +716,7 @@ struct ExpenseSheet: View {
             ForEach(chips, id: \.self) { chip in
                 let sel = chip == category
                 Button { category = chip } label: {
-                    Text(chip)
+                    Text(SpendingCategory.label(chip))
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(sel ? .white : EX.roseChipText)
                         .padding(.vertical, 10).padding(.horizontal, 16)
@@ -479,7 +732,7 @@ struct ExpenseSheet: View {
 
     private var detailsCard: some View {
         VStack(spacing: 0) {
-            TextField("What did you buy?", text: $title)
+            TextField(L.Spending.titlePlaceholder, text: $title)
                 .font(.nunito(15, .bold)).foregroundStyle(EX.textPrimary).tint(EX.roseCTA)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 14)
@@ -487,17 +740,17 @@ struct ExpenseSheet: View {
             rowDivider
 
             HStack {
-                Text("Bought on").font(.nunito(15, .bold)).foregroundStyle(EX.textPrimary)
+                Text(L.Spending.boughtOn).font(.nunito(15, .bold)).foregroundStyle(EX.textPrimary)
                 Spacer()
                 HStack(spacing: 0) {
                     Button { date = date.addingTimeInterval(-86400) } label: {
-                        Text("−").font(.nunito(16, .heavy)).foregroundStyle(EX.textSecondary).frame(width: 36, height: 32)
+                        Text(L.Glyph.minus).font(.nunito(16, .heavy)).foregroundStyle(EX.textSecondary).frame(width: 36, height: 32)
                     }
                     .buttonStyle(.plain)
                     Text(date.formatted(.dateTime.day().month(.abbreviated)))
                         .font(.nunito(13, .heavy)).foregroundStyle(EX.valueText).frame(minWidth: 84)
                     Button { date = date.addingTimeInterval(86400) } label: {
-                        Text("+").font(.nunito(16, .heavy)).foregroundStyle(EX.roseValue).frame(width: 36, height: 32)
+                        Text(L.Glyph.plus).font(.nunito(16, .heavy)).foregroundStyle(EX.roseValue).frame(width: 36, height: 32)
                     }
                     .buttonStyle(.plain)
                 }
@@ -508,7 +761,7 @@ struct ExpenseSheet: View {
             rowDivider
 
             HStack {
-                Text("Add to inventory too").font(.nunito(15, .bold)).foregroundStyle(EX.textPrimary)
+                Text(L.Spending.alsoAddInventory).font(.nunito(15, .bold)).foregroundStyle(EX.textPrimary)
                 Spacer()
                 Button { addToInventory.toggle() } label: {
                     ZStack(alignment: addToInventory ? .trailing : .leading) {
@@ -544,11 +797,15 @@ struct ExpenseSheet: View {
 
     private var noteText: String {
         let prior = priorSpend[category] ?? 0
-        let cat = category.lowercased()
+        let cat = SpendingCategory.label(category).lowercased()
         if prior > 0 {
-            return "You've spent \(spendingCurrency(prior)) on \(cat) so far. This takes it to \(spendingCurrency(prior + amount))."
+            return L.Spending.note(
+                prior: spendingCurrency(prior),
+                category: cat,
+                total: spendingCurrency(prior + amount)
+            )
         }
-        return "First \(cat) purchase logged in this range."
+        return L.Spending.noteFirst(cat)
     }
 
     // MARK: Save
@@ -585,7 +842,9 @@ struct ExpenseSheet: View {
 
         try? context.save()
         if expense == nil {
-            onSaved(addToInventory ? "Logged and added to inventory" : "\(spendingCurrency(amount)) logged")
+            onSaved(addToInventory
+                    ? L.Spending.toastLoggedWithInventory
+                    : L.Spending.toastLogged(spendingCurrency(amount)))
         }
         dismiss()
     }
@@ -611,5 +870,5 @@ private enum EX {
     static let disabledBg = Color(hex: 0xF0E7DC)
     static let disabledText = Color(hex: 0xB7AA9B)
     static let toggleOff = Color(hex: 0xE7DFD4)
-    static let toggleOn = Color(hex: 0x7FBFAE)
+    static let toggleOn = Color(hex: 0xD98FA0)
 }

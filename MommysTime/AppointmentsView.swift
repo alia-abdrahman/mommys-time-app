@@ -12,99 +12,114 @@ struct AppointmentsView: View {
 
     @State private var showingAdd = false
     @State private var editing: Appointment?
+    @State private var selectedDate = Date()
+    @State private var calendarMode = CalendarMode.week
+    @State private var toast: String?
 
-    /// Upcoming first (soonest first), then past (most recent first).
-    private var orderedAppointments: [Appointment] {
-        let now = Date()
-        let upcoming = appointments.filter { ($0.date ?? .distantPast) >= now }
-        let past = appointments.filter { ($0.date ?? .distantPast) < now }.reversed()
-        return upcoming + Array(past)
+    private let calendar = Calendar.current
+
+    /// The chosen day's appointments, earliest first.
+    private var dayAppointments: [Appointment] {
+        appointments
+            .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: selectedDate) }
+            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(orderedAppointments, id: \.objectID) { appt in
-                        AppointmentCard(appointment: appt)
-                            .contentShape(Rectangle())
-                            .onTapGesture { editing = appt }
-                            .contextMenu {
-                                Button("Edit") { editing = appt }
-                                Button("Delete", role: .destructive) { delete(appt) }
-                            }
+
+            ScheduleCalendarCard(date: $selectedDate, mode: $calendarMode, hasEntries: hasAppointments)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            ScrollView(showsIndicators: false) {
+                if dayAppointments.isEmpty {
+                    emptyState
+                } else {
+                    VStack(spacing: 9) {
+                        ForEach(dayAppointments, id: \.objectID) { appt in
+                            AppointmentCard(appointment: appt) { delete(appt) }
+                                .contentShape(Rectangle())
+                                .onTapGesture { editing = appt }
+                                .contextMenu {
+                                    Button(L.Common.edit) { editing = appt }
+                                    Button(L.Common.delete, role: .destructive) { delete(appt) }
+                                }
+                        }
                     }
-                    addButton
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .padding(.bottom, 120)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 20)
             }
         }
-        .background(Theme.canvas)
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showingAdd) {
-            AppointmentSheet()
+            AppointmentSheet(day: selectedDate)
         }
         .sheet(item: $editing) { appt in
             AppointmentSheet(appointment: appt)
         }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(text: toast)
+                    .padding(.bottom, 120)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
     }
 
     private var header: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color(hex: 0x8B7F72))
-                    .frame(width: 38, height: 38)
-                    .background(Color.white, in: Circle())
-                    .shadow(color: Color(hex: 0x7A6248).opacity(0.12), radius: 6, y: 3)
-            }
-            Spacer()
-            Text("Appointment")
-                .font(.baloo(19, heavy: true))
-                .foregroundStyle(Theme.ink)
-            Spacer()
-            Button { showingAdd = true } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(Theme.rose, in: Circle())
-                    .shadow(color: Theme.rose.opacity(0.4), radius: 7, y: 4)
-            }
+        DetailHeader(title: L.Appointments.title, onBack: { dismiss() }) {
+            CircleAddButton { showingAdd = true }
         }
-        .padding(.horizontal, 18)
         .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
-    private var addButton: some View {
-        Button { showingAdd = true } label: {
-            Text("+ Add appointment")
-                .font(.nunito(13, .heavy))
-                .foregroundStyle(Color(hex: 0xA182AD))
-                .frame(maxWidth: .infinity)
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 22)
-                        .strokeBorder(Color(hex: 0xA182AD).opacity(0.45),
-                                      style: StrokeStyle(lineWidth: 2, dash: [6]))
-                )
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Text(L.Appointments.emptyTitle)
+                .font(.baloo(21, heavy: true))
+                .foregroundStyle(Theme.ink)
+                .multilineTextAlignment(.center)
+            Text(L.Appointments.emptyBody)
+                .font(.nunito(14, .semibold))
+                .lineSpacing(6)
+                .foregroundStyle(Theme.inkFaint)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .buttonStyle(.plain)
-        .padding(.top, 2)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 34)
+        .padding(.top, 22)
+    }
+
+    private func hasAppointments(_ day: Date) -> Bool {
+        appointments.contains { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
     }
 
     private func delete(_ appointment: Appointment) {
-        context.delete(appointment)
+        let label = appointment.title ?? L.Appointments.fallbackName
+        withAnimation { context.delete(appointment) }
         try? context.save()
+        showToast(L.Appointments.removed(label))
+    }
+
+    private func showToast(_ message: String) {
+        withAnimation { toast = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation { toast = nil }
+        }
     }
 }
 
 private struct AppointmentCard: View {
     @ObservedObject var appointment: Appointment
+    var onRemove: () -> Void
 
     private var weekday: String {
         (appointment.date ?? Date()).formatted(.dateTime.weekday(.abbreviated)).uppercased()
@@ -115,38 +130,50 @@ private struct AppointmentCard: View {
     private var subtitle: String {
         let time = (appointment.date ?? Date()).formatted(.dateTime.hour().minute())
         if let location = appointment.location, !location.isEmpty {
-            return "\(time) · \(location)"
+            return L.Appointments.cardSubtitle(time: time, location: location)
         }
         return time
     }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             VStack(spacing: 0) {
                 Text(weekday)
                     .font(.nunito(9, .heavy))
                     .tracking(0.6)
-                    .foregroundStyle(Color(hex: 0xA182AD))
+                    .foregroundStyle(Theme.tileGlyph)
                 Text(day)
                     .font(.nunito(18, .heavy))
-                    .foregroundStyle(Color(hex: 0x6B5A75))
+                    .foregroundStyle(Theme.roseInk)
             }
-            .frame(width: 48, height: 48)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
+            .frame(width: 44, height: 44)
+            .background(Theme.peach, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(appointment.title ?? "")
-                    .font(.nunito(16, .heavy))
+                    .font(.nunito(15, .heavy))
                     .foregroundStyle(Theme.ink)
                 Text(subtitle)
-                    .font(.nunito(12.5, .semibold))
-                    .foregroundStyle(Color(hex: 0x9A8D80))
+                    .font(.nunito(12, .bold))
+                    .foregroundStyle(Theme.inkFaint)
             }
             Spacer(minLength: 0)
+
+            Button(action: onRemove) {
+                Text(L.Glyph.remove)
+                    .font(.nunito(13, .heavy))
+                    .foregroundStyle(Color(hex: 0xB7AA9B))
+                    .frame(width: 26, height: 26)
+                    .background(.white, in: Circle())
+                    .overlay(Circle().stroke(Color(hex: 0x7A6248).opacity(0.08), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .background(Color(hex: 0xF2E7F3), in: RoundedRectangle(cornerRadius: 24))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .shadow(color: Theme.softShadow, radius: 9, y: 5)
     }
 }
 
@@ -155,6 +182,8 @@ struct AppointmentSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let appointment: Appointment?
+    /// Day the calendar is showing, so a new appointment lands there.
+    var day: Date = Date()
 
     @State private var title: String
     @State private var date: Date
@@ -165,12 +194,18 @@ struct AppointmentSheet: View {
     @State private var showingTimePicker = false
     @FocusState private var focused: Bool
 
-    init(appointment: Appointment? = nil) {
+    init(appointment: Appointment? = nil, day: Date = Date()) {
         self.appointment = appointment
+        self.day = day
         _title = State(initialValue: appointment?.title ?? "")
-        _date = State(initialValue: appointment?.date ?? Date())
+        _date = State(initialValue: appointment?.date ?? Self.defaultTime(on: day))
         _location = State(initialValue: appointment?.location ?? "")
         _notes = State(initialValue: appointment?.notes ?? "")
+    }
+
+    /// 10:00 on the shown day — the design's default for a new appointment.
+    private static func defaultTime(on day: Date) -> Date {
+        Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: day) ?? day
     }
 
     private var isEditing: Bool { appointment != nil }
@@ -181,15 +216,15 @@ struct AppointmentSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
 
-                sectionLabel("APPOINTMENT").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Appointments.sectionAppointment).padding(.top, 20).padding(.bottom, 8)
                 detailsCard
 
-                sectionLabel("NOTES").padding(.top, 20).padding(.bottom, 8)
+                sectionLabel(L.Appointments.sectionNotes).padding(.top, 20).padding(.bottom, 8)
                 notesCard
 
                 if isEditing {
                     Button(role: .destructive) { showingDeleteConfirmation = true } label: {
-                        Text("Delete appointment")
+                        Text(L.Appointments.deleteButton)
                             .font(.nunito(15, .bold))
                             .foregroundStyle(Color(hex: 0xC85C5C))
                             .frame(maxWidth: .infinity)
@@ -210,18 +245,18 @@ struct AppointmentSheet: View {
         .presentationBackground(AP.sheetBg)
         .presentationDragIndicator(.hidden)
         .sheet(isPresented: $showingDatePicker) {
-            pickerSheet(title: "Date", components: .date, style: .graphical)
+            pickerSheet(title: L.Appointments.pickerDate, components: .date, style: .graphical)
         }
         .sheet(isPresented: $showingTimePicker) {
-            pickerSheet(title: "Time", components: .hourAndMinute, style: .wheel)
+            pickerSheet(title: L.Appointments.pickerTime, components: .hourAndMinute, style: .wheel)
         }
         .confirmationDialog(
-            "Delete this appointment?",
+            L.Appointments.deleteConfirm,
             isPresented: $showingDeleteConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) { deleteAppointment() }
-            Button("Cancel", role: .cancel) {}
+            Button(L.Common.delete, role: .destructive) { deleteAppointment() }
+            Button(L.Common.cancel, role: .cancel) {}
         }
     }
 
@@ -229,12 +264,12 @@ struct AppointmentSheet: View {
 
     private var header: some View {
         ZStack {
-            Text(isEditing ? "Edit Appointment" : "New Appointment")
+            Text(isEditing ? L.Appointments.sheetEditTitle : L.Appointments.sheetNewTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(AP.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(AP.textSecondary)
                         .padding(.vertical, 8)
@@ -245,7 +280,7 @@ struct AppointmentSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : AP.disabledText)
                         .padding(.vertical, 8)
@@ -270,7 +305,7 @@ struct AppointmentSheet: View {
 
     private var detailsCard: some View {
         VStack(spacing: 0) {
-            TextField("Title (e.g. Baby checkup)", text: $title)
+            TextField(L.Appointments.titlePlaceholder, text: $title)
                 .font(.nunito(15, .bold))
                 .foregroundStyle(AP.textPrimary)
                 .tint(AP.accentRose)
@@ -280,7 +315,7 @@ struct AppointmentSheet: View {
             rowDivider
 
             HStack {
-                Text("Date & time").font(.nunito(15, .bold)).foregroundStyle(AP.textPrimary)
+                Text(L.Appointments.dateAndTime).font(.nunito(15, .bold)).foregroundStyle(AP.textPrimary)
                 Spacer()
                 pill(date.formatted(.dateTime.day().month(.abbreviated).year())) { showingDatePicker = true }
                 pill(date.formatted(.dateTime.hour().minute())) { showingTimePicker = true }
@@ -289,7 +324,7 @@ struct AppointmentSheet: View {
 
             rowDivider
 
-            TextField("Location (optional)", text: $location)
+            TextField(L.Appointments.locationPlaceholder, text: $location)
                 .font(.nunito(15, .bold))
                 .foregroundStyle(AP.textPrimary)
                 .tint(AP.accentRose)
@@ -303,7 +338,7 @@ struct AppointmentSheet: View {
     }
 
     private var notesCard: some View {
-        TextField("Anything to remember…", text: $notes, axis: .vertical)
+        TextField(L.Appointments.notesPlaceholder, text: $notes, axis: .vertical)
             .font(.nunito(15, .semibold))
             .foregroundStyle(AP.textPrimary)
             .tint(AP.accentRose)
@@ -343,7 +378,7 @@ struct AppointmentSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { showingDatePicker = false; showingTimePicker = false }
+                        Button(L.Common.done) { showingDatePicker = false; showingTimePicker = false }
                             .tint(AP.accentRose)
                     }
                 }

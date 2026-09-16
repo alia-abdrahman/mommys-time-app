@@ -2,11 +2,28 @@ import SwiftUI
 
 /// Wraps the app in the animated splash, shown once per cold launch ahead of
 /// onboarding/Home. Full-bleed, tappable to skip, auto-dismisses after ~2.6s.
+///
+/// Also the anchor for language switching: `.id(language)` throws the tree away
+/// and rebuilds it whenever she picks a new one, which is what makes every
+/// screen re-read its copy at once. Anything that must *survive* a switch —
+/// the selected tab, the language sheet itself — is held out here, above the
+/// `.id`, or it would be reset by the very change it's driving.
 struct RootView: View {
+    @StateObject private var language = LanguageStore.shared
+
     @State private var showSplash = true
+    @State private var selectedTab = AppTab.home
 
     var body: some View {
-        ContentView()
+        ContentView(selectedTab: $selectedTab)
+            .environmentObject(language)
+            .environment(\.locale, language.locale)
+            .id(language.language)
+            .sheet(isPresented: $language.isPickerPresented) {
+                LanguageSheet()
+                    .environmentObject(language)
+                    .environment(\.locale, language.locale)
+            }
             .overlay {
                 if showSplash {
                     SplashView { withAnimation(.easeOut(duration: 0.35)) { showSplash = false } }
@@ -49,13 +66,13 @@ struct SplashView: View {
             VStack(spacing: 0) {
                 logoDisc
 
-                Text("Mommy's Time")
+                Text(L.App.name)
                     .font(.baloo(34, heavy: true))
                     .foregroundStyle(SP.titleText)
                     .padding(.top, 26)
                     .modifier(Rise(on: risen, delay: 0.18))
 
-                Text("Because you deserve some too")
+                Text(L.App.tagline)
                     .font(.nunito(14, .bold))
                     .tracking(0.2)
                     .foregroundStyle(SP.taglineText)
@@ -72,7 +89,7 @@ struct SplashView: View {
             // 3 — tap hint
             VStack {
                 Spacer()
-                Text("Tap to continue")
+                Text(L.Splash.tapToContinue)
                     .font(.nunito(11.5, .semibold))
                     .foregroundStyle(SP.hintText)
                     .padding(.bottom, 44)

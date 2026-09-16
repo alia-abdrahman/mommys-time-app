@@ -9,13 +9,15 @@ enum BlockCategory: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// `rawValue` is persisted to Core Data, so it stays in English; this is
+    /// what the user actually reads.
     var label: String {
         switch self {
-        case .kids: return "Kids"
-        case .chores: return "Chores"
-        case .appointment: return "Appointment"
-        case .quiet: return "Quiet time"
-        case .meTime: return "Me time"
+        case .kids: return L.Blocks.kids
+        case .chores: return L.Blocks.chores
+        case .appointment: return L.Blocks.appointment
+        case .quiet: return L.Blocks.quiet
+        case .meTime: return L.Blocks.meTime
         }
     }
 
@@ -31,10 +33,10 @@ enum BlockCategory: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
-        case .kids: return Color(hex: 0x7C77B5)      // Kids
-        case .chores: return Color(hex: 0xB98B58)    // Chores
+        case .kids: return Color(hex: 0xC4788C)      // Kids
+        case .chores: return Color(hex: 0xC08497)    // Chores
         case .appointment: return Color(hex: 0xC97B8C)
-        case .quiet: return Color(hex: 0x4E9E86)     // Baby / quiet time
+        case .quiet: return Color(hex: 0xD9758C)     // Baby / quiet time
         case .meTime: return Color(hex: 0xD98FA0)    // Me-time
         }
     }
@@ -48,16 +50,18 @@ struct BlockTemplate: Identifiable {
     let startMinute: Int
     let durationMinutes: Int
 
-    static let all: [BlockTemplate] = [
-        BlockTemplate(title: "School run", category: .kids, startHour: 7, startMinute: 15, durationMinutes: 45),
-        BlockTemplate(title: "School hours", category: .quiet, startHour: 8, startMinute: 0, durationMinutes: 300),
-        BlockTemplate(title: "Nap time", category: .quiet, startHour: 13, startMinute: 0, durationMinutes: 120),
-        BlockTemplate(title: "Cooking", category: .chores, startHour: 17, startMinute: 0, durationMinutes: 60),
-        BlockTemplate(title: "Kids' dinner & bath", category: .kids, startHour: 18, startMinute: 30, durationMinutes: 90),
-        BlockTemplate(title: "Bedtime routine", category: .kids, startHour: 20, startMinute: 0, durationMinutes: 60),
-        BlockTemplate(title: "Laundry", category: .chores, startHour: 10, startMinute: 0, durationMinutes: 45),
-        BlockTemplate(title: "Groceries", category: .chores, startHour: 11, startMinute: 0, durationMinutes: 60),
-    ]
+    // Computed, not stored: the titles are translated copy, and a `static let`
+    // would pin them to whichever language the app first rendered in.
+    static var all: [BlockTemplate] { [
+        BlockTemplate(title: L.Blocks.Template.schoolRun, category: .kids, startHour: 7, startMinute: 15, durationMinutes: 45),
+        BlockTemplate(title: L.Blocks.Template.schoolHours, category: .quiet, startHour: 8, startMinute: 0, durationMinutes: 300),
+        BlockTemplate(title: L.Blocks.Template.napTime, category: .quiet, startHour: 13, startMinute: 0, durationMinutes: 120),
+        BlockTemplate(title: L.Blocks.Template.cooking, category: .chores, startHour: 17, startMinute: 0, durationMinutes: 60),
+        BlockTemplate(title: L.Blocks.Template.dinnerBath, category: .kids, startHour: 18, startMinute: 30, durationMinutes: 90),
+        BlockTemplate(title: L.Blocks.Template.bedtimeRoutine, category: .kids, startHour: 20, startMinute: 0, durationMinutes: 60),
+        BlockTemplate(title: L.Blocks.Template.laundry, category: .chores, startHour: 10, startMinute: 0, durationMinutes: 45),
+        BlockTemplate(title: L.Blocks.Template.groceries, category: .chores, startHour: 11, startMinute: 0, durationMinutes: 60),
+    ] }
 }
 
 extension ScheduleBlock {
@@ -70,6 +74,12 @@ extension ScheduleBlock {
     func resolvedTimes(on day: Date, calendar: Calendar = .current) -> (start: Date, end: Date)? {
         guard let start = startTime, let end = endTime else { return nil }
         if repeatsDaily {
+            // A recurring block runs from the day it was added until its "Ends
+            // on" date — never before, and never after.
+            let target = calendar.startOfDay(for: day)
+            guard target >= calendar.startOfDay(for: start) else { return nil }
+            if let until = repeatsUntil, target > calendar.startOfDay(for: until) { return nil }
+
             let s = calendar.dateComponents([.hour, .minute], from: start)
             let e = calendar.dateComponents([.hour, .minute], from: end)
             guard let projectedStart = calendar.date(bySettingHour: s.hour ?? 0, minute: s.minute ?? 0, second: 0, of: day),

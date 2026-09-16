@@ -1,8 +1,17 @@
 import SwiftUI
 import CoreData
 
+/// Which collection a recipe belongs to. Raw values are written to
+/// `Recipe.category`, so they stay in English; `label` is what the tabs show.
 enum RecipeCategory {
-    static let all = ["Mommy", "Baby"]
+    static let mommy = "Mommy"
+    static let baby = "Baby"
+
+    static let all = [mommy, baby]
+
+    static func label(_ value: String) -> String {
+        value == baby ? L.Recipes.categoryBaby : L.Recipes.categoryMommy
+    }
 }
 
 struct RecipesView: View {
@@ -14,12 +23,14 @@ struct RecipesView: View {
     )
     private var recipes: FetchedResults<Recipe>
 
-    @State private var category = "Mommy"
+    @State private var category = RecipeCategory.mommy
     @State private var showingAdd = false
     @State private var toast: String?
 
+    private var isBaby: Bool { category == RecipeCategory.baby }
+
     private var filtered: [Recipe] {
-        recipes.filter { ($0.category ?? "Mommy") == category }
+        recipes.filter { ($0.category ?? RecipeCategory.mommy) == category }
     }
 
     var body: some View {
@@ -28,11 +39,14 @@ struct RecipesView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    tabControl
+                    heroCard
+                    tabControl.padding(.top, 10)
+                    caption.padding(.top, 16)
+
                     if filtered.isEmpty {
                         emptyState
                     } else {
-                        VStack(spacing: 11) {
+                        VStack(spacing: 9) {
                             ForEach(filtered, id: \.objectID) { recipe in
                                 NavigationLink {
                                     RecipeDetailView(recipe: recipe)
@@ -42,14 +56,12 @@ struct RecipesView: View {
                                 .buttonStyle(LiftRowStyle())
                             }
                         }
-                        .padding(.top, 16)
-
-                        addOwnRow.padding(.top, 11)
+                        .padding(.top, 12)
                     }
                 }
                 .padding(.top, 18)
                 .padding(.horizontal, 18)
-                .padding(.bottom, 96)
+                .padding(.bottom, 120)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -59,35 +71,76 @@ struct RecipesView: View {
         .sheet(isPresented: $showingAdd) {
             RecipeSheet(defaultCategory: category) { savedCategory, name in
                 category = savedCategory
-                showToast("\(name) saved")
+                showToast(L.Recipes.savedToast(name))
             }
         }
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .onAppear(perform: seedIfNeeded)
     }
 
-    private var addOwnRow: some View {
-        Button { showingAdd = true } label: {
-            HStack(spacing: 7) {
-                Image(systemName: "plus").font(.system(size: 12, weight: .bold))
-                Text("Add your own recipe").font(.nunito(12.5, .heavy))
+    /// Blush panel over the list: what this collection is for, and the one
+    /// action the screen exists to offer.
+    private var heroCard: some View {
+        VStack(spacing: 0) {
+            Image("recipes")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(Theme.tileGlyph)
+                .frame(width: 38, height: 38)
+                .background(.white, in: Circle())
+                .padding(.bottom, 8)
+
+            Text(isBaby ? L.Recipes.heroBaby : L.Recipes.heroMommy)
+                .font(.baloo(20, heavy: true))
+                .foregroundStyle(Theme.roseInk)
+
+            HStack(spacing: 6) {
+                Text(L.Recipes.cookingFor)
+                    .font(.nunito(13, .bold))
+                    .foregroundStyle(Theme.roseMuted)
+                Text(isBaby ? L.Recipes.cookingForBaby : L.Recipes.cookingForYou)
+                    .font(.nunito(13, .heavy))
+                    .foregroundStyle(Theme.roseAccentText)
+                    .padding(.vertical, 2).padding(.horizontal, 9)
+                    .background(.white, in: Capsule())
             }
-            .foregroundStyle(RC.roseText)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(Color(hex: 0xC97B8C).opacity(0.45),
-                                  style: StrokeStyle(lineWidth: 2, dash: [6]))
-            )
+            .padding(.top, 4)
+
+            Button { showingAdd = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .bold))
+                    Text(L.Recipes.addCTA).font(.baloo(16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(Theme.tileGlyph, in: Capsule())
+                .shadow(color: Color(hex: 0xBE5F78).opacity(0.34), radius: 9, y: 8)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14).padding(.horizontal, 20)
+        .background(RC.roseFill, in: RoundedRectangle(cornerRadius: 28))
+    }
+
+    private var caption: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(isBaby ? L.Recipes.captionBaby : L.Recipes.captionMommy)
+                .font(.baloo(19, heavy: true))
+                .foregroundStyle(Theme.ink)
+            Text(isBaby ? L.Recipes.captionBabySub : L.Recipes.captionMommySub)
+                .font(.nunito(12.5, .semibold))
+                .foregroundStyle(Theme.inkFaint)
+        }
+        .padding(.horizontal, 2)
     }
 
     private func showToast(_ message: String) {
@@ -99,7 +152,7 @@ struct RecipesView: View {
 
     private var header: some View {
         ZStack {
-            Text("Recipes")
+            Text(L.Recipes.title)
                 .font(.baloo(19, heavy: true))
                 .foregroundStyle(RC.textPrimary)
             HStack {
@@ -121,65 +174,54 @@ struct RecipesView: View {
     }
 
     private var tabControl: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             ForEach(RecipeCategory.all, id: \.self) { cat in
                 let sel = category == cat
                 Button { withAnimation(.easeInOut(duration: 0.2)) { category = cat } } label: {
-                    Text(cat)
-                        .font(.nunito(14, .heavy))
-                        .foregroundStyle(sel ? .white : RC.roseText)
+                    Text(RecipeCategory.label(cat))
+                        .font(.nunito(12.5, .heavy))
+                        .foregroundStyle(sel ? Theme.roseText : Theme.inkFaint)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
+                        .padding(.vertical, 8)
                         .background {
                             if sel {
-                                Capsule().fill(RC.roseAccent)
-                                    .shadow(color: RC.roseAccent.opacity(0.35), radius: 12, y: 5)
+                                Capsule().fill(.white)
+                                    .shadow(color: Color(hex: 0x7A6248).opacity(0.14), radius: 4, y: 2)
                             }
                         }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(5)
-        .background(RC.roseFill, in: Capsule())
+        .padding(4)
+        .background(Theme.field, in: Capsule())
     }
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Text("No \(category.lowercased()) recipes yet")
+            Text(L.Recipes.emptyTitle(RecipeCategory.label(category).lowercased()))
                 .font(.baloo(20, heavy: true))
                 .foregroundStyle(RC.textPrimary)
-            Text(category == "Baby"
-                 ? "Save purées, first foods and toddler meals here."
-                 : "Save quick, nourishing meals for yourself here.")
+            Text(isBaby ? L.Recipes.emptyBabyBody : L.Recipes.emptyMommyBody)
                 .font(.nunito(15))
                 .foregroundStyle(RC.textMuted)
                 .multilineTextAlignment(.center)
-            Button { showingAdd = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus").font(.system(size: 14, weight: .bold))
-                    Text("Add a recipe").font(.baloo(15))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 22).padding(.vertical, 14)
-                .background(RC.roseAccent, in: Capsule())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .padding(.top, 40)
         .padding(.horizontal, 24)
     }
 
     /// Seeds the four default premium recipes the first time the screen opens.
     private func seedIfNeeded() {
         guard recipes.isEmpty else { return }
+        // Titles and badges are stored as canonical English keys so the curated
+        // content stays findable however the app is translated.
         let seed: [(String, String, Int, String)] = [
-            ("15-min oat bowl", "Mommy", 15, "one pot"),
-            ("One-pot chicken porridge", "Mommy", 30, "freezer friendly"),
-            ("Sweet potato mash", "Baby", 10, "6m+"),
-            ("Banana oat fingers", "Baby", 20, "8m+"),
+            (L.Recipes.Seed.oatBowlKey, RecipeCategory.mommy, 15, L.Recipes.Seed.onePotKey),
+            (L.Recipes.Seed.porridgeKey, RecipeCategory.mommy, 30, L.Recipes.Seed.freezerKey),
+            (L.Recipes.Seed.sweetPotatoKey, RecipeCategory.baby, 10, L.Recipes.Seed.sixMonthsKey),
+            (L.Recipes.Seed.bananaFingersKey, RecipeCategory.baby, 20, L.Recipes.Seed.eightMonthsKey),
         ]
         // Descending sort → assign earlier timestamps to later items so the
         // seed array order is preserved, and any custom recipe added later
@@ -203,8 +245,10 @@ private struct RecipeRow: View {
 
     private var meta: String {
         var parts: [String] = []
-        if recipe.prepMinutes > 0 { parts.append("\(recipe.prepMinutes) min") }
-        if let tag = recipe.tag, !tag.isEmpty { parts.append(tag) }
+        if recipe.prepMinutes > 0 { parts.append(L.Recipes.prepMinutes(Int(recipe.prepMinutes))) }
+        if let tag = recipe.tag, !tag.isEmpty {
+            parts.append(L.Recipes.Seed.displayBadge(for: tag))
+        }
         return parts.joined(separator: " · ")
     }
 
@@ -219,7 +263,7 @@ private struct RecipeRow: View {
                         .foregroundStyle(RC.roseAccent.opacity(0.6))
                 )
             VStack(alignment: .leading, spacing: 2) {
-                Text(recipe.title ?? "")
+                Text(L.Recipes.Seed.displayTitle(for: recipe.title))
                     .font(.nunito(15.5, .heavy))
                     .foregroundStyle(RC.textPrimary)
                 if !meta.isEmpty {
@@ -287,7 +331,7 @@ struct RecipeDetailView: View {
                     ingredientsHeader.padding(.top, 16).padding(.bottom, 8)
                     ingredientsCard
 
-                    sectionLabel("METHOD").padding(.top, 16).padding(.bottom, 8)
+                    sectionLabel(L.Recipes.method).padding(.top, 16).padding(.bottom, 8)
                     methodList
 
                     primaryCTA.padding(.top, 18)
@@ -305,7 +349,7 @@ struct RecipeDetailView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -316,7 +360,7 @@ struct RecipeDetailView: View {
 
     private var header: some View {
         ZStack {
-            Text(recipe.title ?? "Recipe")
+            Text(recipe.title.map(L.Recipes.Seed.displayTitle) ?? L.Recipes.fallbackTitle)
                 .font(.baloo(19, heavy: true))
                 .foregroundStyle(RD.textPrimary)
                 .lineLimit(1)
@@ -348,7 +392,7 @@ struct RecipeDetailView: View {
                     Text(content.tag)
                         .font(.nunito(12, .heavy)).tracking(1)
                         .foregroundStyle(RD.roseTag)
-                    Text(recipe.title ?? "")
+                    Text(L.Recipes.Seed.displayTitle(for: recipe.title))
                         .font(.baloo(22, heavy: true))
                         .foregroundStyle(RD.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -397,19 +441,19 @@ struct RecipeDetailView: View {
 
     private var ingredientsHeader: some View {
         HStack {
-            Text("INGREDIENTS")
+            Text(L.Recipes.ingredients)
                 .font(.nunito(12, .heavy)).tracking(0.8)
                 .foregroundStyle(RD.textMuted)
             Spacer()
             HStack(spacing: 0) {
                 Button { servings = max(1, servings - 1) } label: {
-                    Text("−").font(.nunito(15, .heavy)).foregroundStyle(Color(hex: 0x8A7E72)).frame(width: 32, height: 28)
+                    Text(L.Glyph.minus).font(.nunito(15, .heavy)).foregroundStyle(Color(hex: 0x8A7E72)).frame(width: 32, height: 28)
                 }
                 .buttonStyle(.plain)
                 Text(content.yieldLabel(servings))
                     .font(.nunito(12, .heavy)).foregroundStyle(Color(hex: 0x6E6358)).frame(minWidth: 74)
                 Button { servings = min(12, servings + 1) } label: {
-                    Text("+").font(.nunito(15, .heavy)).foregroundStyle(RD.roseAccent).frame(width: 32, height: 28)
+                    Text(L.Glyph.plus).font(.nunito(15, .heavy)).foregroundStyle(RD.roseAccent).frame(width: 32, height: 28)
                 }
                 .buttonStyle(.plain)
             }
@@ -469,7 +513,9 @@ struct RecipeDetailView: View {
         let scaled = ing.amount * Double(servings) / Double(max(1, content.baseYield))
         let n = (scaled * 10).rounded() / 10
         let num = n.formatted(.number.precision(.fractionLength(0...1)))
-        return ing.unit == "×" ? "×\(num)" : "\(num) \(ing.unit)"
+        return ing.unit == L.Recipes.unitCount
+            ? L.Recipes.amountCount(num)
+            : L.Recipes.amount(num, ing.unit)
     }
 
     // MARK: Method
@@ -516,7 +562,7 @@ struct RecipeDetailView: View {
             HStack(spacing: 9) {
                 Image(systemName: allStepsDone ? "checkmark" : "clock")
                     .font(.system(size: 15, weight: .semibold))
-                Text(allStepsDone ? "Done — nicely cooked" : "Cook this now")
+                Text(allStepsDone ? L.Recipes.cookedCTA : L.Recipes.cookCTA)
                     .font(.baloo(16))
             }
             .foregroundStyle(.white)
@@ -529,9 +575,7 @@ struct RecipeDetailView: View {
     }
 
     private var ctaHint: some View {
-        Text(allStepsDone
-             ? "Tap a step again if you want to run it back."
-             : "Adds a 30-minute cooking block to today's schedule.")
+        Text(allStepsDone ? L.Recipes.cookedHint : L.Recipes.cookHint)
             .font(.nunito(11.5, .semibold)).lineSpacing(4)
             .foregroundStyle(RD.hintText)
             .multilineTextAlignment(.center)
@@ -543,25 +587,26 @@ struct RecipeDetailView: View {
     private func toggleSaved() {
         recipe.isSaved.toggle()
         try? context.save()
-        showToast(recipe.isSaved ? "Saved to your recipes" : "Removed from saved")
+        showToast(recipe.isSaved ? L.Recipes.toastSaved : L.Recipes.toastUnsaved)
     }
 
     private func cook() {
         if allStepsDone {
-            showToast("Enjoy it while it's hot")
+            showToast(L.Recipes.toastEnjoy)
             return
         }
         let cal = Calendar.current
         let start = cal.date(bySettingHour: 17, minute: 30, second: 0, of: Date()) ?? Date()
         let block = ScheduleBlock(context: context)
         block.id = UUID()
-        block.title = "Cook: \(recipe.title ?? "recipe")"
+        let name = recipe.title.map(L.Recipes.Seed.displayTitle) ?? L.Recipes.cookBlockFallback
+        block.title = L.Recipes.cookBlockTitle(name)
         block.category = BlockCategory.chores.rawValue
         block.startTime = start
         block.endTime = start.addingTimeInterval(30 * 60)
         block.repeatsDaily = false
         try? context.save()
-        showToast("Cooking block added to today")
+        showToast(L.Recipes.toastBlockAdded)
     }
 
     private func showToast(_ message: String) {
@@ -598,7 +643,7 @@ struct RecipeSheet: View {
     @Environment(\.managedObjectContext) private var context
     @Environment(\.dismiss) private var dismiss
 
-    var defaultCategory: String = "Mommy"
+    var defaultCategory: String = RecipeCategory.mommy
     /// Called on save with (collection, recipe name).
     var onSaved: (String, String) -> Void = { _, _ in }
 
@@ -612,13 +657,13 @@ struct RecipeSheet: View {
     @State private var toast: String?
     @FocusState private var focused: Bool
 
-    init(defaultCategory: String = "Mommy", onSaved: @escaping (String, String) -> Void = { _, _ in }) {
+    init(defaultCategory: String = RecipeCategory.mommy, onSaved: @escaping (String, String) -> Void = { _, _ in }) {
         self.defaultCategory = defaultCategory
         self.onSaved = onSaved
         _collection = State(initialValue: defaultCategory)
     }
 
-    private var isBaby: Bool { collection == "Baby" }
+    private var isBaby: Bool { collection == RecipeCategory.baby }
     private var filledIngredients: [IngredientDraft] { ingredients.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty } }
     private var filledSteps: [StepDraft] { steps.filter { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty } }
     private var canSave: Bool {
@@ -630,14 +675,14 @@ struct RecipeSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 heroCard.padding(.top, 18)
-                sectionLabel("WHY IT HELPS").padding(.top, 18).padding(.bottom, 8)
+                sectionLabel(L.Recipes.whySection).padding(.top, 18).padding(.bottom, 8)
                 whyCard
-                sectionLabel("INGREDIENTS").padding(.top, 18).padding(.bottom, 8)
+                sectionLabel(L.Recipes.ingredients).padding(.top, 18).padding(.bottom, 8)
                 ingredientsCard
-                addRow("+ Add ingredient") { ingredients.append(IngredientDraft()) }.padding(.top, 9)
-                sectionLabel("METHOD").padding(.top, 18).padding(.bottom, 8)
+                addRow(L.Recipes.addIngredient) { ingredients.append(IngredientDraft()) }.padding(.top, 9)
+                sectionLabel(L.Recipes.method).padding(.top, 18).padding(.bottom, 8)
                 methodList
-                addRow("+ Add step") { steps.append(StepDraft()) }.padding(.top, 9)
+                addRow(L.Recipes.addStep) { steps.append(StepDraft()) }.padding(.top, 9)
                 footerNote.padding(.top, 14)
             }
             .padding(.top, 18)
@@ -662,12 +707,12 @@ struct RecipeSheet: View {
 
     private var header: some View {
         ZStack {
-            Text("New Recipe")
+            Text(L.Recipes.newTitle)
                 .font(.baloo(17, heavy: true))
                 .foregroundStyle(NR.textPrimary)
             HStack {
                 Button { dismiss() } label: {
-                    Text("Cancel")
+                    Text(L.Common.cancel)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(NR.textSecondary)
                         .padding(.vertical, 8).padding(.horizontal, 16)
@@ -677,7 +722,7 @@ struct RecipeSheet: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button { save() } label: {
-                    Text("Save")
+                    Text(L.Common.save)
                         .font(.nunito(13, .heavy))
                         .foregroundStyle(canSave ? .white : NR.disabledText)
                         .padding(.vertical, 8).padding(.horizontal, 18)
@@ -692,7 +737,7 @@ struct RecipeSheet: View {
 
     private var heroCard: some View {
         VStack(spacing: 0) {
-            TextField("Recipe name", text: $name)
+            TextField(L.Recipes.namePlaceholder, text: $name)
                 .font(.baloo(20, heavy: true))
                 .foregroundStyle(NR.textPrimary)
                 .tint(NR.roseCTA)
@@ -703,7 +748,7 @@ struct RecipeSheet: View {
                 ForEach(RecipeCategory.all, id: \.self) { c in
                     let sel = c == collection
                     Button { collection = c } label: {
-                        Text(c)
+                        Text(RecipeCategory.label(c))
                             .font(.nunito(13, .heavy))
                             .foregroundStyle(sel ? .white : NR.roseTag)
                             .frame(maxWidth: .infinity)
@@ -718,7 +763,7 @@ struct RecipeSheet: View {
             .padding(.top, 14)
 
             HStack(spacing: 8) {
-                factCell(value: "\(minutes)", label: "minutes",
+                factCell(value: "\(minutes)", label: L.Recipes.factMinutes,
                          onMinus: { minutes = max(5, minutes - 5) },
                          onPlus: { minutes = min(180, minutes + 5) })
                 factCell(value: "\(servings)", label: servingsLabel,
@@ -732,8 +777,10 @@ struct RecipeSheet: View {
     }
 
     private var servingsLabel: String {
-        let word = isBaby ? "portion" : "serving"
-        return servings == 1 ? word : word + "s"
+        RecipeYieldUnit.label(
+            isBaby ? RecipeYieldUnit.portion : RecipeYieldUnit.serving,
+            count: servings
+        )
     }
 
     private func factCell(value: String, label: String, onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
@@ -742,11 +789,11 @@ struct RecipeSheet: View {
             Text(label).font(.nunito(10.5, .bold)).foregroundStyle(NR.textMuted)
             HStack(spacing: 6) {
                 Button(action: onMinus) {
-                    Text("−").font(.nunito(14, .heavy)).foregroundStyle(NR.textSecondary)
+                    Text(L.Glyph.minus).font(.nunito(14, .heavy)).foregroundStyle(NR.textSecondary)
                         .frame(width: 26, height: 26).background(NR.fieldFill, in: Circle())
                 }.buttonStyle(.plain)
                 Button(action: onPlus) {
-                    Text("+").font(.nunito(14, .heavy)).foregroundStyle(.white)
+                    Text(L.Glyph.plus).font(.nunito(14, .heavy)).foregroundStyle(.white)
                         .frame(width: 26, height: 26).background(NR.roseCTA, in: Circle())
                 }.buttonStyle(.plain)
             }
@@ -764,7 +811,7 @@ struct RecipeSheet: View {
     }
 
     private var whyCard: some View {
-        TextField("One line, for future you", text: $why)
+        TextField(L.Recipes.whyPlaceholder, text: $why)
             .font(.nunito(14, .bold)).foregroundStyle(NR.textPrimary).tint(NR.roseCTA)
             .focused($focused)
             .padding(.vertical, 14).padding(.horizontal, 18)
@@ -779,10 +826,10 @@ struct RecipeSheet: View {
         VStack(spacing: 0) {
             ForEach($ingredients) { $ing in
                 HStack(spacing: 10) {
-                    TextField("Ingredient", text: $ing.name)
+                    TextField(L.Recipes.ingredientPlaceholder, text: $ing.name)
                         .font(.nunito(14, .bold)).foregroundStyle(NR.textPrimary).tint(NR.roseCTA)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    TextField("Amount", text: $ing.amount)
+                    TextField(L.Recipes.amountPlaceholder, text: $ing.amount)
                         .font(.nunito(13, .heavy)).foregroundStyle(NR.textMuted).tint(NR.roseCTA)
                         .multilineTextAlignment(.trailing)
                         .frame(width: 74)
@@ -808,7 +855,7 @@ struct RecipeSheet: View {
                     Text("\(index + 1)")
                         .font(.nunito(12, .heavy)).foregroundStyle(NR.roseValue)
                         .frame(width: 24, height: 24).background(NR.roseFill, in: Circle())
-                    TextField("What happens in this step?", text: $step.text)
+                    TextField(L.Recipes.stepPlaceholder, text: $step.text)
                         .font(.nunito(13.5, .bold)).foregroundStyle(NR.textPrimary).tint(NR.roseCTA)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     removeButton { removeStep(step) }
@@ -822,7 +869,7 @@ struct RecipeSheet: View {
 
     private func removeButton(_ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text("×").font(.nunito(12, .heavy)).foregroundStyle(NR.removeIcon)
+            Text(L.Glyph.remove).font(.nunito(12, .heavy)).foregroundStyle(NR.removeIcon)
                 .frame(width: 24, height: 24).background(NR.fieldFill, in: Circle())
         }
         .buttonStyle(.plain)
@@ -852,13 +899,12 @@ struct RecipeSheet: View {
     }
 
     private var noteText: String {
-        guard canSave else {
-            return "Give it a name, one ingredient and one step — blank lines are dropped when you save."
-        }
-        let i = filledIngredients.count, s = filledSteps.count
-        let iWord = i == 1 ? "ingredient" : "ingredients"
-        let sWord = s == 1 ? "step" : "steps"
-        return "\(i) \(iWord), \(s) \(sWord). It'll sit at the top of your \(collection.lowercased()) list."
+        guard canSave else { return L.Recipes.newNoteIncomplete }
+        return L.Recipes.newNote(
+            ingredients: filledIngredients.count,
+            steps: filledSteps.count,
+            collection: RecipeCategory.label(collection).lowercased()
+        )
     }
 
     // MARK: Actions
@@ -875,11 +921,11 @@ struct RecipeSheet: View {
 
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedName.isEmpty else { return showToast("Name your recipe first") }
+        guard !trimmedName.isEmpty else { return showToast(L.Recipes.toastNeedsName) }
         let ings = filledIngredients
-        guard !ings.isEmpty else { return showToast("Add at least one ingredient") }
+        guard !ings.isEmpty else { return showToast(L.Recipes.toastNeedsIngredient) }
         let stps = filledSteps
-        guard !stps.isEmpty else { return showToast("Add at least one step") }
+        guard !stps.isEmpty else { return showToast(L.Recipes.toastNeedsStep) }
 
         let r = Recipe(context: context)
         r.id = UUID()
@@ -888,7 +934,7 @@ struct RecipeSheet: View {
         r.category = collection
         r.prepMinutes = Int32(minutes)
         r.servings = Int32(servings)
-        r.tag = "\(servings) \(servingsLabel)"
+        r.tag = L.Recipes.yield(servings, unit: servingsLabel)
         r.why = why.trimmingCharacters(in: .whitespaces)
         r.ingredients = ings
             .map { "\($0.name.trimmingCharacters(in: .whitespaces));;\($0.amount.trimmingCharacters(in: .whitespaces))" }

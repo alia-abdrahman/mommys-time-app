@@ -24,7 +24,7 @@ struct SyncToCloudView: View {
                     .background(SC.roseFill, in: Circle())
                     .padding(.bottom, 12)
 
-                Text("Premium feature")
+                Text(L.Sync.premiumBadge)
                     .font(.nunito(12, .heavy))
                     .foregroundStyle(SC.roseAccent)
                     .padding(.vertical, 6).padding(.horizontal, 14)
@@ -49,7 +49,7 @@ struct SyncToCloudView: View {
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -57,7 +57,7 @@ struct SyncToCloudView: View {
 
     private var header: some View {
         ZStack {
-            Text("Sync to Cloud")
+            Text(L.Sync.title)
                 .font(.baloo(19, heavy: true))
                 .foregroundStyle(SC.textPrimary)
             HStack {
@@ -80,10 +80,10 @@ struct SyncToCloudView: View {
 
     private var explainerCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Keep your data safe")
+            Text(L.Sync.explainerTitle)
                 .font(.baloo(16, heavy: true))
                 .foregroundStyle(SC.textPrimary)
-            Text("Automatic cloud sync across your devices is coming soon. In the meantime, export a copy of everything and save it to Files or send it to yourself.")
+            Text(L.Sync.explainerBody)
                 .font(.nunito(13, .semibold))
                 .lineSpacing(5)
                 .foregroundStyle(SC.textSecondary)
@@ -99,12 +99,12 @@ struct SyncToCloudView: View {
         Button {
             showingShare = true
             exported = true
-            showToast("Backup exported to Files")
+            showToast(L.Sync.toastExported)
         } label: {
             HStack(spacing: 9) {
                 Image(systemName: exported ? "checkmark" : "square.and.arrow.up")
                     .font(.system(size: 15, weight: .semibold))
-                Text(exported ? "Backup saved" : "Export a backup")
+                Text(exported ? L.Sync.exportedCTA : L.Sync.exportCTA)
                     .font(.baloo(16))
             }
             .foregroundStyle(.white)
@@ -125,7 +125,7 @@ struct SyncToCloudView: View {
 
     /// Builds a readable text backup of the user's data for the share sheet.
     private func backupText() -> String {
-        var lines = ["MommysTime backup", ""]
+        var lines = [L.Sync.backupHeading, ""]
 
         func fetch<T: NSManagedObject>(_ type: T.Type, _ name: String, sortKey: String) -> [T] {
             let request = NSFetchRequest<T>(entityName: name)
@@ -135,27 +135,37 @@ struct SyncToCloudView: View {
 
         let appts = fetch(Appointment.self, "Appointment", sortKey: "date")
         if !appts.isEmpty {
-            lines.append("Appointments:")
+            lines.append(L.Sync.backupAppointments)
             for a in appts {
                 let when = a.date?.formatted(.dateTime.day().month().year().hour().minute()) ?? ""
-                lines.append("• \(a.title ?? "") — \(when)")
+                lines.append(L.Sync.backupAppointment(title: a.title ?? "", when: when))
             }
             lines.append("")
         }
 
         let items = fetch(InventoryItem.self, "InventoryItem", sortKey: "name")
         if !items.isEmpty {
-            lines.append("Inventory:")
-            for i in items { lines.append("• \(i.name ?? "") ×\(i.quantity) (\(i.category ?? ""))") }
+            lines.append(L.Sync.backupInventory)
+            for i in items {
+                lines.append(L.Sync.backupItem(
+                    name: i.name ?? "",
+                    quantity: Int(i.quantity),
+                    category: SpendingCategory.label(i.category ?? SpendingCategory.other)
+                ))
+            }
             lines.append("")
         }
 
         let growth = fetch(GrowthEntry.self, "GrowthEntry", sortKey: "date")
         if !growth.isEmpty {
-            lines.append("Growth:")
+            lines.append(L.Sync.backupGrowth)
             for g in growth {
                 let when = g.date?.formatted(.dateTime.day().month().year()) ?? ""
-                lines.append("• \(when): \(g.weightKg) kg, \(g.heightCm) cm")
+                lines.append(L.Sync.backupGrowthRow(
+                    when: when,
+                    weight: "\(g.weightKg)",
+                    height: "\(g.heightCm)"
+                ))
             }
             lines.append("")
         }
@@ -163,11 +173,11 @@ struct SyncToCloudView: View {
         let expenses = fetch(Expense.self, "Expense", sortKey: "date")
         if !expenses.isEmpty {
             let total = expenses.reduce(0.0) { $0 + $1.amount }
-            lines.append("Spending: \(spendingCurrency(total)) total across \(expenses.count) expenses")
+            lines.append(L.Sync.backupSpending(total: spendingCurrency(total), count: expenses.count))
             lines.append("")
         }
 
-        lines.append("Exported from MommysTime 🌸")
+        lines.append(L.Sync.backupFooter)
         return lines.joined(separator: "\n")
     }
 }

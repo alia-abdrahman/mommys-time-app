@@ -8,115 +8,103 @@ enum SettingsKeys {
     static let minGapMinutes = "minGapMinutes"
     static let maxSlotMinutes = "maxSlotMinutes"
     static let hasCompletedOnboarding = "hasCompletedOnboarding"
-    static let showGuide = "showGuide"
     static let pumpIntervalHours = "pumpIntervalHours"
+    static let feedIntervalHours = "feedIntervalHours"
     static let isPremium = "isPremium"
+    /// An `AppLanguage` raw value — "system" unless she picked one herself.
+    static let appLanguage = "appLanguage"
+
+    // Wake Window: which state the baby is in, and when it started.
+    static let babyAsleep = "babyAsleep"
+    static let babyStateSince = "babyStateSince"
 
     // Collected during onboarding
     static let babyName = "babyName"
     static let babyAgeBand = "babyAgeBand"
-    static let trackers = "trackers"
     static let goalTitle = "goalTitle"
     static let goalTarget = "goalTarget"
     static let caregiverName = "caregiverName"
     static let caregiverRelation = "caregiverRelation"
+
+    // Profile
+    static let userName = "userName"
+    static let userEmail = "userEmail"
+}
+
+/// The three destinations in the floating tab bar. Everything else in the app
+/// is reached by pushing from Home.
+enum AppTab: Hashable {
+    case home, village, settings
 }
 
 struct ContentView: View {
-    @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
-    @State private var selectedTab = AppTab.home
+    /// Owned by `RootView` so it outlives a language switch, which rebuilds
+    /// everything from here down.
+    @Binding var selectedTab: AppTab
 
-    // Data + state for the "Share plan" button hosted in the tab bar.
-    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \ScheduleBlock.startTime, ascending: true)])
-    private var allBlocks: FetchedResults<ScheduleBlock>
-    @FetchRequest(sortDescriptors: [NSSortDescriptor(keyPath: \Appointment.date, ascending: true)])
-    private var appointments: FetchedResults<Appointment>
-    @State private var showingSharePlan = false
+    @EnvironmentObject private var language: LanguageStore
+
+    @AppStorage(SettingsKeys.hasCompletedOnboarding) private var hasCompletedOnboarding = false
     @State private var toast: String?
 
-    init() {
+    init(selectedTab: Binding<AppTab>) {
+        _selectedTab = selectedTab
         AppFont.register()
         // Warm "Avocation" skin behind SwiftUI Lists/Forms.
         UICollectionView.appearance().backgroundColor = UIColor(Theme.canvas)
     }
 
     var body: some View {
-        // All tabs stay alive (keeps each tab's scroll / navigation state) and
-        // the custom blush nav bar is inset along the bottom.
+        // All three tabs stay alive so each keeps its own navigation stack and
+        // scroll position; the glass bar floats over whichever one is showing.
         ZStack {
-            HomeView(selectedTab: $selectedTab).tabShown(selectedTab == AppTab.home)
-            TodayView().tabShown(selectedTab == AppTab.schedule)
-            GoalsView().tabShown(selectedTab == AppTab.goals)
-            WeeklyProgressView().tabShown(selectedTab == AppTab.progress)
-            SettingsView().tabShown(selectedTab == AppTab.settings)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            CustomTabBar(selectedTab: $selectedTab) { showingSharePlan = true }
+            HomeView(onToast: showToast).tabShown(selectedTab == .home)
+            VillageView(onToast: showToast).tabShown(selectedTab == .village)
+            SettingsView(onToast: showToast).tabShown(selectedTab == .settings)
         }
         .background(Theme.canvas.ignoresSafeArea())
+        .overlay(alignment: .bottom) {
+            // 18pt off the bezel, as in the design. An overlay is laid out
+            // inside the safe area, so the home-indicator inset is cancelled
+            // out — otherwise the bar floats ~52pt up and wastes the strip
+            // underneath it.
+            FloatingTabBar(selectedTab: $selectedTab)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18 - Self.bottomSafeInset)
+        }
         .tint(Theme.rose)
         .font(.nunito(16))
-        .sheet(isPresented: $showingSharePlan) {
-            SharePlanSheet(planText: planText(for:)) { showToast($0) }
-        }
         .overlay(alignment: .bottom) {
             if let toast {
                 Toast(text: toast)
-                    .padding(.bottom, 190)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .fullScreenCover(isPresented: .constant(!hasCompletedOnboarding)) {
-            OnboardingView { message in showToast(message) }
+            // Covers don't reliably inherit environment objects — the language
+            // step needs the store, so hand it over explicitly.
+            OnboardingView(onExit: showToast)
+                .environmentObject(language)
         }
+    }
+
+    /// Height of the home-indicator inset, so the floating bar can be pinned
+    /// relative to the physical bottom edge rather than the safe area.
+    static var bottomSafeInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.bottom ?? 0
     }
 
     private func showToast(_ message: String) {
         withAnimation { toast = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-            withAnimation { toast = nil }
+            withAnimation { if toast == message { toast = nil } }
         }
-    }
-
-    private func planText(for day: Date) -> String {
-        let calendar = Calendar.current
-        let dayLabel = day.formatted(.dateTime.weekday(.wide).day().month())
-        var lines = ["🌸 Plan for \(dayLabel)", ""]
-
-        let blocks = allBlocks
-            .compactMap { block in block.resolvedTimes(on: day).map { (block, $0.start, $0.end) } }
-            .sorted { $0.1 < $1.1 }
-        if !blocks.isEmpty {
-            lines.append("Schedule:")
-            for (block, start, end) in blocks {
-                let s = start.formatted(.dateTime.hour().minute())
-                let e = end.formatted(.dateTime.hour().minute())
-                lines.append("• \(s)–\(e)  \(block.title ?? "")")
-            }
-            lines.append("")
-        }
-
-        let dayAppointments = appointments
-            .filter { calendar.isDate($0.date ?? .distantPast, inSameDayAs: day) }
-            .sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }
-        if !dayAppointments.isEmpty {
-            lines.append("Appointments:")
-            for appt in dayAppointments {
-                let time = appt.date?.formatted(.dateTime.hour().minute()) ?? ""
-                var line = "• \(time)  \(appt.title ?? "")"
-                if let location = appt.location, !location.isEmpty { line += " @ \(location)" }
-                lines.append(line)
-            }
-            lines.append("")
-        }
-
-        if blocks.isEmpty && dayAppointments.isEmpty {
-            lines.append("Nothing scheduled yet.")
-            lines.append("")
-        }
-
-        lines.append("Sent with love from MommysTime 💛")
-        return lines.joined(separator: "\n")
     }
 }
 
@@ -130,113 +118,77 @@ private extension View {
     }
 }
 
-/// Blush bottom navigation with clean line icons and an elevated rose "heart"
-/// button in the center — matching the app's Avocation design.
-struct CustomTabBar: View {
-    @Binding var selectedTab: Int
-    /// Triggered by the elevated center "Share plan" button.
-    var onSharePlan: () -> Void
+// MARK: - Floating tab bar
 
-    /// True while a pointer hovers the Share plan button (iPad / trackpad).
-    @State private var shareHovering = false
+/// Translucent "liquid glass" pill holding Home / Community / Settings. It floats
+/// clear of the screen edges and content scrolls underneath it.
+struct FloatingTabBar: View {
+    @Binding var selectedTab: AppTab
 
     private struct Item: Identifiable {
-        let tab: Int
-        /// Base name of the custom nav icon; "-active"/"-inactive" is appended.
-        let asset: String
+        let tab: AppTab
+        let symbol: String
         let label: String
-        var id: Int { tab }
+        var id: AppTab { tab }
     }
 
-    private let tabs = [
-        Item(tab: AppTab.home, asset: "nav-home", label: "Home"),
-        Item(tab: AppTab.schedule, asset: "nav-schedule", label: "Schedule"),
-        Item(tab: AppTab.goals, asset: "nav-goals", label: "Goals"),
-        Item(tab: AppTab.progress, asset: "nav-progress", label: "Progress"),
-        Item(tab: AppTab.settings, asset: "nav-settings", label: "Settings"),
+    private let items = [
+        Item(tab: .home, symbol: "house", label: L.Tabs.home),
+        Item(tab: .village, symbol: "person.2", label: L.Tabs.community),
+        Item(tab: .settings, symbol: "gearshape", label: L.Tabs.settings),
     ]
 
     var body: some View {
-        // Five evenly-spaced tabs in the bar, with the "Share plan" button
-        // floating centered above the bar's top edge.
-        HStack(spacing: 0) {
-            ForEach(tabs) { iconButton($0) }
+        HStack(spacing: 6) {
+            ForEach(items) { pill($0) }
         }
-        .padding(.top, 38)
-        .padding(.bottom, 6)
-        .padding(.horizontal, 6)
-        .background(
-            Theme.navBar
-                .shadow(color: Theme.cardShadow, radius: 12, y: -3)
-                .ignoresSafeArea(edges: .bottom)
-        )
-        .overlay(alignment: .top) {
-            shareButton
-                .offset(y: -48)
+        .padding(8)
+        .background {
+            RoundedRectangle(cornerRadius: 34, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 34, style: .continuous)
+                        .fill(Theme.tabBarGlass)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 34, style: .continuous)
+                        .strokeBorder(Theme.tabBarStroke, lineWidth: 1)
+                }
+                .shadow(color: Color(hex: 0x7A6248).opacity(0.22), radius: 17, y: 14)
+                .shadow(color: Color(hex: 0x7A6248).opacity(0.10), radius: 3, y: 2)
         }
     }
 
-    private func iconButton(_ item: Item) -> some View {
+    private func pill(_ item: Item) -> some View {
         let selected = selectedTab == item.tab
+        let tint = selected ? Theme.tabIconOn : Theme.tabIconOff
         return Button {
             selectedTab = item.tab
         } label: {
-            VStack(spacing: 4) {
-                Image(selected ? "\(item.asset)-active" : "\(item.asset)-inactive")
-                    .renderingMode(.original)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 24, height: 24)
+            VStack(spacing: 3) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 19, weight: .regular))
+                    .frame(height: 22)
                 Text(item.label)
-                    .font(.nunito(11, .bold))
-                    .foregroundStyle(selected ? Theme.navIconOn : Theme.navIcon)
+                    .font(.nunito(11, .heavy))
             }
+            .foregroundStyle(tint)
             .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+            .padding(.top, 9)
+            .padding(.bottom, 7)
+            .background(
+                selected ? Theme.tabPillOn : .clear,
+                in: RoundedRectangle(cornerRadius: 26, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         }
         .buttonStyle(.plain)
-    }
-
-    /// Elevated rose circle with a paper-plane, labelled "Share plan",
-    /// centered above the bar.
-    private var shareButton: some View {
-        Button(action: onSharePlan) {
-            VStack(spacing: 5) {
-                Image("share-plan-white")
-                    .renderingMode(.original)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 26, height: 26)
-                    .frame(width: 62, height: 62)
-                    .background(Color(hex: 0xD9758C), in: Circle())
-                    .overlay(Circle().stroke(Theme.canvas, lineWidth: 5))
-                    .shadow(color: Color(hex: 0xD9758C).opacity(0.45), radius: 9, y: 5)
-                Text("Share plan")
-                    .font(.nunito(11, .bold))
-                    .foregroundStyle(Theme.navIconOn)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(LiftButtonStyle())
-        // Lift on hover (pointer devices); press handled by the style.
-        .offset(y: shareHovering ? -12 : 0)
-        .animation(.spring(response: 0.32, dampingFraction: 0.6), value: shareHovering)
-        .onHover { shareHovering = $0 }
-    }
-}
-
-/// Springs the label up and larger while pressed, then settles back — gives the
-/// Share plan button a clearly visible "lift" when tapped.
-private struct LiftButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .offset(y: configuration.isPressed ? -12 : 0)
-            .scaleEffect(configuration.isPressed ? 1.12 : 1.0)
-            .animation(.spring(response: 0.32, dampingFraction: 0.6), value: configuration.isPressed)
+        .animation(.spring(response: 0.28, dampingFraction: 0.8), value: selected)
     }
 }
 
 #Preview {
-    ContentView()
+    ContentView(selectedTab: .constant(.home))
+        .environmentObject(LanguageStore.shared)
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
